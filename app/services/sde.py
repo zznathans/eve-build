@@ -92,6 +92,15 @@ async def blueprint_for_product(
     return await db.sde_blueprints.find_one({"product_type_id": product_type_id})
 
 
+async def planet_schematic_for_product(
+    db: AsyncIOMotorDatabase, product_type_id: int
+) -> dict[str, object] | None:
+    """Reverse lookup: which planetary schematic produces this item, if any. P0 raw materials
+    (extracted, not manufactured) have none - unindexed since sde_planet_schematics is tiny
+    (~90 docs total, same as list_all_planet_schematics scanning the whole collection)."""
+    return await db.sde_planet_schematics.find_one({"output.type_id": product_type_id})
+
+
 async def search_blueprints_by_name(
     db: AsyncIOMotorDatabase, query: str, limit: int = 50
 ) -> list[dict[str, object]]:

@@ -38,6 +38,7 @@ h2 { font-size: 1rem; margin: 0 0 0.75rem; }
 }
 .flag-build { background: rgba(76, 139, 245, 0.15); color: #4c8bf5; }
 .flag-buy { background: rgba(154, 164, 178, 0.15); color: #9aa4b2; }
+.flag-buy-toggle { background: rgba(245, 166, 35, 0.15); color: #f5a623; }
 a.flag:hover { filter: brightness(1.15); cursor: pointer; }
 
 .item-grid {
@@ -51,6 +52,7 @@ a.flag:hover { filter: brightness(1.15); cursor: pointer; }
   display: block; text-decoration: none; color: inherit;
 }
 a.item-card:hover { border-color: #4c8bf5; }
+.item-card-buildable { border-color: rgba(76, 139, 245, 0.6); }
 .item-card-content {
   position: relative; z-index: 1; display: flex; flex-direction: column; gap: 0.45rem;
 }

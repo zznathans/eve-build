@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from html import escape
-from typing import cast
+from typing import Any, cast
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -338,6 +338,21 @@ async def colony_detail(
         extractor_details = pin.get("extractor_details")
         schematic_id = pin.get("schematic_id")
 
+        def _buffered_table(pin: dict[str, Any]) -> str:
+            contents = pin.get("contents") or []
+            if not contents:
+                return ""
+            return _quantity_table(
+                "Buffered",
+                [
+                    (
+                        escape(_type_name(item["type_id"])),
+                        f"&times;{format_number(item['amount'])}",
+                    )
+                    for item in contents
+                ],
+            )
+
         if extractor_details is not None:
             product_type_id = extractor_details.get("product_type_id")
             product_name = escape(_type_name(product_type_id)) if product_type_id else "-"
@@ -353,6 +368,7 @@ async def colony_detail(
                 _card(
                     pin_type_name,
                     [("Product", product_name), ("Expires", expiry_label)],
+                    extra_html=_buffered_table(pin),
                 )
             )
             if product_type_id is not None:
@@ -378,7 +394,7 @@ async def colony_detail(
                 _card(
                     schematic_name,
                     [("Cycle time", f"{cycle_minutes} min")],
-                    extra_html=inputs_table + output_table,
+                    extra_html=inputs_table + output_table + _buffered_table(pin),
                     bg_type_id=output["type_id"],
                 )
             )

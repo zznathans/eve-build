@@ -2,8 +2,10 @@ from app.services.locations import LocationInfo
 from app.web import (
     location_label_html,
     location_label_text,
+    render_page,
     security_status_color,
     security_status_html,
+    static_url,
 )
 
 
@@ -54,3 +56,22 @@ def test_location_label_text_is_plain_text() -> None:
     info = LocationInfo(name="Jita IV - Moon 4", security_status=0.9459991455078125)
 
     assert location_label_text(60003760, info) == "Jita IV - Moon 4 (0.9)"
+
+
+def test_static_url_appends_a_content_derived_version() -> None:
+    url = static_url("/static/base.css")
+
+    assert url.startswith("/static/base.css?v=")
+    # Stable across calls - it's the file's content, not e.g. a random/time-based value.
+    assert static_url("/static/base.css") == url
+
+
+def test_static_url_changes_when_a_different_file_is_requested() -> None:
+    assert static_url("/static/base.css") != static_url("/static/card.css")
+
+
+def test_render_page_cache_busts_stylesheet_links() -> None:
+    html = render_page("Title", "<p>body</p>", "/static/card.css")
+
+    assert f'href="{static_url("/static/base.css")}"' in html
+    assert f'href="{static_url("/static/card.css")}"' in html

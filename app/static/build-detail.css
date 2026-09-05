@@ -1,2 +1,12 @@
 .page { max-width: 80rem; margin: 0 auto; padding: 2rem 1.5rem; }
 .short { color: #f0625a; }
+
+.qty-form {
+  display: flex; align-items: center; gap: 0.6rem;
+  margin-top: 0.4rem; font-size: 0.85rem; color: #9aa4b2;
+}
+.qty-form input[type="number"] {
+  background: #1a1d24; color: #e6e6e6;
+  border: 1px solid #2a2e37; border-radius: 6px; padding: 0.3rem 0.5rem;
+  font-size: 0.85rem; width: 6rem;
+}

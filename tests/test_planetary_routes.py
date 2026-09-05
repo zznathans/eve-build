@@ -104,7 +104,7 @@ async def test_planetary_list_groups_by_tier_and_shows_profit(
     # -> 23520 ISK/day.
     assert "Profit / day" in response.text
     assert "23.5K ISK" in response.text
-    assert '<link rel="stylesheet" href="/static/card.css">' in response.text
+    assert '<link rel="stylesheet" href="/static/card.css?v=' in response.text
 
 
 @respx.mock
@@ -153,7 +153,7 @@ async def test_planetary_detail_tier1_has_single_from_p0_row(
     # Profit / day: output value 40 - cost 50 = -10 ISK/cycle, cycle = 1800s -> -480 ISK/day.
     assert "Profit / day" in response.text
     assert "-480 ISK" in response.text
-    assert '<link rel="stylesheet" href="/static/card.css">' in response.text
+    assert '<link rel="stylesheet" href="/static/card.css?v=' in response.text
 
 
 @respx.mock
