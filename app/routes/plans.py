@@ -1,6 +1,6 @@
+import re
 from datetime import UTC, datetime
 from html import escape
-import re
 from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status

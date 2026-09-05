@@ -488,6 +488,7 @@ async def blueprint_detail(
     db: AsyncIOMotorDatabase = Depends(get_database),
     redis: Redis | None = Depends(get_redis),
     settings: Settings = Depends(get_settings),
+    plan_id: str | None = Query(default=None),
 ) -> HTMLResponse:
     blueprints, _ = await character_data.get_merged_blueprints(db, redis, settings, character)
     blueprint = next((bp for bp in blueprints if bp.item_id == item_id), None)
@@ -622,12 +623,25 @@ async def blueprint_detail(
 
     materials_section = _section("Materials", "".join(material_cards))
 
+    add_to_plan_cta = ""
+    if product_type_id is not None:
+        if plan_id:
+            add_to_plan_href = (
+                f"/plans/{plan_id}/add-job?type_id={product_type_id}&qty={product_quantity}"
+            )
+        else:
+            add_to_plan_href = f"/plans/create?type_id={product_type_id}&qty={product_quantity}"
+        add_to_plan_cta = (
+            f'<a class="btn btn-primary" href="{escape(add_to_plan_href)}">Add to Plan</a>'
+        )
+
     body = f"""<div class="page">{header}
       <div class="summary">
         {_summary_stat(str(int(on_site_buildable)), "Buildable on-site")}
         {_summary_stat(str(int(global_buildable)), "Buildable (all assets)")}
         {price_figures}
       </div>
+      {add_to_plan_cta}
       {materials_section}
       <a class="btn btn-secondary back" href="/blueprints">Back to blueprints</a>
     </div>"""
