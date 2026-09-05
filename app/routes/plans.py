@@ -232,17 +232,24 @@ async def plan_detail(
                 <input type="number" id="qty-{job_id}" name="qty"
                   value="{resolution.target_quantity}" min="1">
                 <button type="submit" class="btn btn-secondary">Update</button>
+                {delete_cta}
               </form>
               <div class="item-line"><span>Cost</span>
                 <span class="item-value">{format_isk(resolution.raw_material_cost)}</span></div>
               <div class="item-line"><span>Profit</span>
                 <span class="item-value">{format_isk(job_profit)}</span></div>
               {_materials_table(resolution.raw_materials)}
-              {delete_cta}
             </div>
           </div>
         """
-    jobs_section = section_html("Jobs", job_cards)
+    jobs_section = ""
+    if job_cards:
+        jobs_section = f"""
+          <div class="section-box">
+            <h2>Jobs</h2>
+            <div class="item-grid job-grid">{job_cards}</div>
+          </div>
+        """
 
     combined_materials = build_chain.aggregate_raw_materials(resolutions)
     materials_section = section_html("Materials Needed", _materials_table(combined_materials))
