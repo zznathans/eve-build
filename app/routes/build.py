@@ -114,6 +114,20 @@ async def build_chooser(
     plan_id: str | None = Query(default=None),
 ) -> HTMLResponse:
     items_href = f"/build/items?plan_id={plan_id}" if plan_id else "/build/items"
+    if character is None:
+        blueprint_card_href = "/blueprints/catalog"
+        blueprint_card_title = "I know which blueprint I want"
+        blueprint_card_description = """
+            Search the blueprint catalog directly and see its materials, cost, and
+            output for a single run.
+        """
+    else:
+        blueprint_card_href = "/blueprints"
+        blueprint_card_title = "Select from one of my existing blueprints"
+        blueprint_card_description = """
+            Pick one of your own blueprints and see its materials, cost, and output
+            for a single run.
+        """
     body = f"""<div class="page">
       <h1>What do you want to do?</h1>
       <div class="chooser-grid">
@@ -124,12 +138,9 @@ async def build_chooser(
             to build it, including any sub-components that need building first.
           </div>
         </a>
-        <a class="chooser-card" href="/blueprints/catalog">
-          <div class="chooser-title">I know which blueprint I want</div>
-          <div class="chooser-description">
-            Search the blueprint catalog directly and see its materials, cost, and
-            output for a single run.
-          </div>
+        <a class="chooser-card" href="{escape(blueprint_card_href)}">
+          <div class="chooser-title">{escape(blueprint_card_title)}</div>
+          <div class="chooser-description">{blueprint_card_description}</div>
         </a>
       </div>
     </div>"""

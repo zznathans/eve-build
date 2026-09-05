@@ -59,7 +59,7 @@ async def _seed_two_level_ship(mongo_db: AsyncMongoMockClient) -> None:
     )
 
 
-def test_build_chooser_shows_both_options(client: TestClient) -> None:
+def test_build_chooser_shows_both_options_logged_out(client: TestClient) -> None:
     response = client.get("/build")
 
     assert response.status_code == 200
@@ -67,6 +67,22 @@ def test_build_chooser_shows_both_options(client: TestClient) -> None:
     assert 'href="/build/items"' in response.text
     assert "I know which blueprint I want" in response.text
     assert 'href="/blueprints/catalog"' in response.text
+
+
+@respx.mock
+def test_build_chooser_links_to_own_blueprints_when_logged_in(
+    client: TestClient,
+    test_settings: Settings,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+
+    response = client.get("/build")
+
+    assert response.status_code == 200
+    assert "Select from one of my existing blueprints" in response.text
+    assert 'href="/blueprints"' in response.text
+    assert "I know which blueprint I want" not in response.text
 
 
 def test_build_chooser_carries_plan_id_forward(client: TestClient) -> None:
