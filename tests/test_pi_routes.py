@@ -94,6 +94,60 @@ def _mock_colonies(settings: Settings, *, future_expiry: bool = True) -> None:
     )
 
 
+def _mock_colonies_with_backed_up_route(settings: Settings) -> None:
+    """Same fixture as _mock_colonies, but the factory pin has material buffered in its
+    own contents - as if the route to storage were broken or backed up."""
+    respx.get(f"{settings.esi_base_url}/characters/{CHARACTER_ID}/planets/").mock(
+        return_value=Response(
+            200,
+            json=[
+                {
+                    "planet_id": PLANET_ID,
+                    "solar_system_id": SYSTEM_ID,
+                    "planet_type": "gas",
+                    "owner_id": CHARACTER_ID,
+                    "last_update": "2026-01-01T00:00:00Z",
+                    "upgrade_level": 3,
+                    "num_pins": 2,
+                }
+            ],
+        )
+    )
+    respx.get(f"{settings.esi_base_url}/characters/{CHARACTER_ID}/planets/{PLANET_ID}/").mock(
+        return_value=Response(
+            200,
+            json={
+                "links": [],
+                "pins": [
+                    {
+                        "pin_id": EXTRACTOR_PIN_ID,
+                        "type_id": EXTRACTOR_TYPE_ID,
+                        "expiry_time": "2099-01-01T00:00:00Z",
+                        "extractor_details": {
+                            "product_type_id": WATER_TYPE_ID,
+                            "qty_per_cycle": 100,
+                        },
+                        "contents": [{"type_id": WATER_TYPE_ID, "amount": 300}],
+                    },
+                    {
+                        "pin_id": FACTORY_PIN_ID,
+                        "type_id": FACTORY_TYPE_ID,
+                        "schematic_id": COOLANT_SCHEMATIC_ID,
+                        "contents": [{"type_id": COOLANT_TYPE_ID, "amount": 40}],
+                    },
+                ],
+                "routes": [],
+            },
+        )
+    )
+    respx.get(f"{settings.esi_base_url}/universe/planets/{PLANET_ID}").mock(
+        return_value=Response(200, json={"name": "Jita IV", "type_id": 2016})
+    )
+    respx.get(f"{settings.esi_base_url}/universe/systems/{SYSTEM_ID}").mock(
+        return_value=Response(200, json={"name": "Jita"})
+    )
+
+
 async def _seed_types(mongo_db: AsyncMongoMockClient) -> None:
     await mongo_db.sde_types.insert_many(
         [
@@ -192,6 +246,27 @@ async def test_pi_detail_shows_extractor_factory_storage(
     assert "Storage" in response.text
     assert "Links" not in response.text
     assert "Routes" not in response.text
+
+
+@respx.mock
+async def test_pi_detail_shows_buffered_contents_on_extractor_and_factory(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    """Material can sit in an extractor's or factory's own buffer (e.g. a broken/backed-up
+    route to storage) - it must still show up somewhere, not be silently dropped."""
+    _log_in(client, test_settings, rsa_key_pair, scopes=[PI_SCOPE])
+    await _seed_types(mongo_db)
+    _mock_colonies_with_backed_up_route(test_settings)
+
+    response = client.get(f"/pi/{PLANET_ID}")
+
+    assert response.status_code == 200
+    assert "Buffered" in response.text
+    assert response.text.count("Water") >= 2
+    assert response.text.count("Coolant") >= 2
 
 
 @respx.mock
