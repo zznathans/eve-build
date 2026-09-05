@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from html import escape
+import re
 from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -17,6 +18,7 @@ from app.web import format_isk, item_icon_url, render_page, section_html, summar
 
 router = APIRouter(prefix="/plans", tags=["plans"])
 
+_PLAN_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _LIST_STYLE = ["/static/card.css", "/static/build.css"]
 _DETAIL_STYLE = ["/static/card.css", "/static/build-detail.css"]
 
@@ -116,6 +118,8 @@ async def add_job_to_plan(
     qty: int = Query(default=1, ge=1),
     build: str = Query(default=""),
 ) -> RedirectResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
     build_set = frozenset(int(t) for t in build.split(",") if t.strip().isdigit())
     job_id = await plan.add_job(db, plan_id, character.character_id, type_id, qty, build_set)
     if job_id is None:
