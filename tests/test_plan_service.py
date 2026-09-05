@@ -2,7 +2,14 @@ from datetime import datetime
 
 from mongomock_motor import AsyncMongoMockClient
 
-from app.services.plan import add_job, create_plan, get_plan, list_plans, update_job_quantity
+from app.services.plan import (
+    add_job,
+    create_plan,
+    get_plan,
+    list_plans,
+    remove_job,
+    update_job_quantity,
+)
 
 CHARACTER_ID = 555
 OTHER_CHARACTER_ID = 556
@@ -120,6 +127,71 @@ async def test_update_job_quantity_returns_false_for_a_different_owner(
     unchanged = await get_plan(mongo_db, plan_id, CHARACTER_ID)
     assert unchanged is not None
     assert unchanged["jobs"][0]["target_quantity"] == 1
+
+
+async def test_remove_job_deletes_it_when_another_job_remains(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+    job_id = await add_job(mongo_db, plan_id, CHARACTER_ID, MODULE_TYPE_ID, 2, frozenset())
+    assert job_id is not None
+    original = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert original is not None
+
+    result = await remove_job(mongo_db, plan_id, CHARACTER_ID, job_id)
+
+    assert result is True
+    doc = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert doc is not None
+    assert len(doc["jobs"]) == 1
+    assert doc["jobs"][0]["target_type_id"] == SHIP_TYPE_ID
+    assert doc["updated_at"] >= original["updated_at"]
+
+
+async def test_remove_job_returns_false_for_the_plans_only_job(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+    doc = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert doc is not None
+    job_id = doc["jobs"][0]["job_id"]
+
+    result = await remove_job(mongo_db, plan_id, CHARACTER_ID, job_id)
+
+    assert result is False
+    unchanged = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert unchanged is not None
+    assert len(unchanged["jobs"]) == 1
+
+
+async def test_remove_job_returns_false_for_unknown_job(mongo_db: AsyncMongoMockClient) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+    await add_job(mongo_db, plan_id, CHARACTER_ID, MODULE_TYPE_ID, 2, frozenset())
+
+    result = await remove_job(mongo_db, plan_id, CHARACTER_ID, "nonexistent")
+
+    assert result is False
+
+
+async def test_remove_job_returns_none_for_unknown_plan(mongo_db: AsyncMongoMockClient) -> None:
+    result = await remove_job(mongo_db, "nonexistent", CHARACTER_ID, "some-job")
+
+    assert result is None
+
+
+async def test_remove_job_returns_none_for_a_different_owner(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+    job_id = await add_job(mongo_db, plan_id, CHARACTER_ID, MODULE_TYPE_ID, 2, frozenset())
+    assert job_id is not None
+
+    result = await remove_job(mongo_db, plan_id, OTHER_CHARACTER_ID, job_id)
+
+    assert result is None
+    doc = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert doc is not None
+    assert len(doc["jobs"]) == 2
 
 
 async def test_list_plans_scopes_to_character_and_sorts_by_recency(

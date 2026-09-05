@@ -143,6 +143,25 @@ async def update_job_quantity(
     return RedirectResponse(f"/plans/{plan_id}")
 
 
+@router.get("/{plan_id}/jobs/{job_id}/delete")
+async def remove_job_from_plan(
+    plan_id: str,
+    job_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> RedirectResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    removed = await plan.remove_job(db, plan_id, character.character_id, job_id)
+    if removed is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+    if removed is False:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Job not found, or it's the plan's only job"
+        )
+    return RedirectResponse(f"/plans/{plan_id}")
+
+
 @router.get("/{plan_id}", response_class=HTMLResponse)
 async def plan_detail(
     plan_id: str,
@@ -195,6 +214,10 @@ async def plan_detail(
         job_id = escape(cast(str, job["job_id"]))
         job_profit = resolution.output_value - resolution.raw_material_cost
         update_qty_href = escape(f"/plans/{plan_id}/jobs/{job['job_id']}/update")
+        delete_cta = ""
+        if len(jobs) > 1:
+            delete_href = escape(f"/plans/{plan_id}/jobs/{job['job_id']}/delete")
+            delete_cta = f'<a class="btn btn-danger" href="{delete_href}">Remove</a>'
         job_cards += f"""
           <div class="item-card">
             <div class="item-card-content">
@@ -215,6 +238,7 @@ async def plan_detail(
               <div class="item-line"><span>Profit</span>
                 <span class="item-value">{format_isk(job_profit)}</span></div>
               {_materials_table(resolution.raw_materials)}
+              {delete_cta}
             </div>
           </div>
         """

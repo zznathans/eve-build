@@ -202,6 +202,128 @@ async def test_update_job_quantity_404s_for_unknown_job(
 
 
 @respx.mock
+async def test_remove_job_requires_login(client: TestClient) -> None:
+    response = client.get("/plans/some-plan/jobs/some-job/delete")
+
+    assert response.status_code == 401
+
+
+@respx.mock
+async def test_remove_job_deletes_it_and_redirects_back(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+    await _seed_buildable_module(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    client.get(f"/plans/{plan_id}/add-job", params={"type_id": MODULE_TYPE_ID, "qty": 1})
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    module_job_id = doc["jobs"][1]["job_id"]
+
+    response = client.get(
+        f"/plans/{plan_id}/jobs/{module_job_id}/delete", follow_redirects=False
+    )
+
+    assert response.status_code in (302, 303, 307)
+    assert response.headers["location"] == f"/plans/{plan_id}"
+    updated = await mongo_db.plans.find_one({"_id": plan_id})
+    assert updated is not None
+    assert len(updated["jobs"]) == 1
+    assert updated["jobs"][0]["target_type_id"] == SHIP_TYPE_ID
+
+
+@respx.mock
+async def test_remove_job_400s_for_the_plans_only_job(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    job_id = doc["jobs"][0]["job_id"]
+
+    response = client.get(f"/plans/{plan_id}/jobs/{job_id}/delete")
+
+    assert response.status_code == 400
+    unchanged = await mongo_db.plans.find_one({"_id": plan_id})
+    assert unchanged is not None
+    assert len(unchanged["jobs"]) == 1
+
+
+@respx.mock
+async def test_remove_job_404s_for_unknown_plan(
+    client: TestClient,
+    test_settings: Settings,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+
+    response = client.get("/plans/nonexistent/jobs/some-job/delete")
+
+    assert response.status_code == 404
+
+
+@respx.mock
+async def test_plan_detail_hides_remove_button_for_the_only_job(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+
+    response = client.get(f"/plans/{plan_id}")
+
+    assert response.status_code == 200
+    assert "Remove" not in response.text
+
+
+@respx.mock
+async def test_plan_detail_shows_remove_button_for_each_job_when_multiple_exist(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+    await _seed_buildable_module(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    client.get(f"/plans/{plan_id}/add-job", params={"type_id": MODULE_TYPE_ID, "qty": 1})
+
+    response = client.get(f"/plans/{plan_id}")
+
+    assert response.status_code == 200
+    assert response.text.count(f'/plans/{plan_id}/jobs/') >= 4  # update + delete, per job
+
+
+@respx.mock
 async def test_plan_detail_shows_editable_quantity_for_each_job(
     client: TestClient,
     test_settings: Settings,
