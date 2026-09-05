@@ -146,6 +146,87 @@ async def test_add_job_404s_for_a_different_owners_plan(
 
 
 @respx.mock
+async def test_update_job_quantity_requires_login(client: TestClient) -> None:
+    response = client.get("/plans/some-plan/jobs/some-job/update", params={"qty": 3})
+
+    assert response.status_code == 401
+
+
+@respx.mock
+async def test_update_job_quantity_changes_the_job_and_redirects_back(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    job_id = doc["jobs"][0]["job_id"]
+
+    response = client.get(
+        f"/plans/{plan_id}/jobs/{job_id}/update", params={"qty": 7}, follow_redirects=False
+    )
+
+    assert response.status_code in (302, 303, 307)
+    assert response.headers["location"] == f"/plans/{plan_id}"
+    updated = await mongo_db.plans.find_one({"_id": plan_id})
+    assert updated is not None
+    assert updated["jobs"][0]["target_quantity"] == 7
+
+
+@respx.mock
+async def test_update_job_quantity_404s_for_unknown_job(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+
+    response = client.get(f"/plans/{plan_id}/jobs/nonexistent/update", params={"qty": 7})
+
+    assert response.status_code == 404
+
+
+@respx.mock
+async def test_plan_detail_shows_editable_quantity_for_each_job(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 3}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    job_id = doc["jobs"][0]["job_id"]
+
+    response = client.get(f"/plans/{plan_id}")
+
+    assert response.status_code == 200
+    assert f'action="/plans/{plan_id}/jobs/{job_id}/update"' in response.text
+    assert 'value="3"' in response.text
+
+
+@respx.mock
 async def test_plan_detail_renders_a_single_job(
     client: TestClient,
     test_settings: Settings,

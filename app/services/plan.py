@@ -61,6 +61,25 @@ async def add_job(
     return str(job["job_id"])
 
 
+async def update_job_quantity(
+    db: AsyncIOMotorDatabase,
+    plan_id: str,
+    character_id: int,
+    job_id: str,
+    target_quantity: int,
+) -> bool:
+    """Updates one job's desired output quantity in place - the rest of the job
+    (target_type_id, build_set) is unchanged, so its BuildResolution just re-scales next
+    time the plan is viewed. Returns False if the plan/job doesn't exist or isn't owned by
+    this character (the route turns that into a 404)."""
+    now = datetime.now(UTC).replace(tzinfo=None)
+    result = await db.plans.update_one(
+        {"_id": plan_id, "character_id": character_id, "jobs.job_id": job_id},
+        {"$set": {"jobs.$.target_quantity": target_quantity, "updated_at": now}},
+    )
+    return result.matched_count > 0
+
+
 async def get_plan(
     db: AsyncIOMotorDatabase, plan_id: str, character_id: int
 ) -> dict[str, object] | None:

@@ -127,6 +127,22 @@ async def add_job_to_plan(
     return RedirectResponse(f"/plans/{plan_id}")
 
 
+@router.get("/{plan_id}/jobs/{job_id}/update")
+async def update_job_quantity(
+    plan_id: str,
+    job_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    qty: int = Query(..., ge=1),
+) -> RedirectResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    updated = await plan.update_job_quantity(db, plan_id, character.character_id, job_id, qty)
+    if not updated:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan or job not found")
+    return RedirectResponse(f"/plans/{plan_id}")
+
+
 @router.get("/{plan_id}", response_class=HTMLResponse)
 async def plan_detail(
     plan_id: str,
@@ -175,8 +191,10 @@ async def plan_detail(
     )
 
     job_cards = ""
-    for resolution in resolutions:
+    for job, resolution in zip(jobs, resolutions, strict=True):
+        job_id = escape(cast(str, job["job_id"]))
         job_profit = resolution.output_value - resolution.raw_material_cost
+        update_qty_href = escape(f"/plans/{plan_id}/jobs/{job['job_id']}/update")
         job_cards += f"""
           <div class="item-card">
             <div class="item-card-content">
@@ -184,8 +202,14 @@ async def plan_detail(
                 <img class="item-title-icon"
                   src="{escape(item_icon_url(resolution.target_type_id))}"
                   alt="" onerror="this.style.visibility='hidden'">
-                {escape(resolution.target_name)} &times;{resolution.target_quantity}
+                {escape(resolution.target_name)}
               </div>
+              <form method="get" action="{update_qty_href}" class="qty-form">
+                <label for="qty-{job_id}">Desired output</label>
+                <input type="number" id="qty-{job_id}" name="qty"
+                  value="{resolution.target_quantity}" min="1">
+                <button type="submit" class="btn btn-secondary">Update</button>
+              </form>
               <div class="item-line"><span>Cost</span>
                 <span class="item-value">{format_isk(resolution.raw_material_cost)}</span></div>
               <div class="item-line"><span>Profit</span>
