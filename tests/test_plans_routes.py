@@ -228,9 +228,7 @@ async def test_remove_job_deletes_it_and_redirects_back(
     assert doc is not None
     module_job_id = doc["jobs"][1]["job_id"]
 
-    response = client.get(
-        f"/plans/{plan_id}/jobs/{module_job_id}/delete", follow_redirects=False
-    )
+    response = client.get(f"/plans/{plan_id}/jobs/{module_job_id}/delete", follow_redirects=False)
 
     assert response.status_code in (302, 303, 307)
     assert response.headers["location"] == f"/plans/{plan_id}"
@@ -320,7 +318,7 @@ async def test_plan_detail_shows_remove_button_for_each_job_when_multiple_exist(
     response = client.get(f"/plans/{plan_id}")
 
     assert response.status_code == 200
-    assert response.text.count(f'/plans/{plan_id}/jobs/') >= 4  # update + delete, per job
+    assert response.text.count(f"/plans/{plan_id}/jobs/") >= 4  # update + delete, per job
 
 
 @respx.mock
@@ -371,8 +369,7 @@ async def test_plan_detail_renders_a_single_job(
     assert '<div class="label">Jobs</div>' in response.text
     assert '<div class="value">1</div>' in response.text
     assert (
-        '<a class="btn btn-primary plan-header-action" href="/build/items?plan_id='
-        in response.text
+        '<a class="btn btn-primary plan-header-action" href="/build/items?plan_id=' in response.text
     )
 
 

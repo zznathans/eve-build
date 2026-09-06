@@ -101,12 +101,12 @@ async def test_get_character_colonies_skips_planet_that_fails_to_fetch() -> None
             ],
         )
     )
-    respx.get(
-        f"{settings.esi_base_url}/characters/{CHARACTER_ID}/planets/{good_planet_id}/"
-    ).mock(return_value=Response(200, json={"pins": [], "links": [], "routes": []}))
-    respx.get(
-        f"{settings.esi_base_url}/characters/{CHARACTER_ID}/planets/{bad_planet_id}/"
-    ).mock(return_value=Response(404, json={"error": "not found"}))
+    respx.get(f"{settings.esi_base_url}/characters/{CHARACTER_ID}/planets/{good_planet_id}/").mock(
+        return_value=Response(200, json={"pins": [], "links": [], "routes": []})
+    )
+    respx.get(f"{settings.esi_base_url}/characters/{CHARACTER_ID}/planets/{bad_planet_id}/").mock(
+        return_value=Response(404, json={"error": "not found"})
+    )
 
     colonies = await character_data.get_character_colonies(
         db, redis, settings, "token", CHARACTER_ID
