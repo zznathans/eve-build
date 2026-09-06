@@ -161,7 +161,7 @@ async def item_search(
         if not docs:
             results_html = '<p class="empty">No items match your search.</p>'
         else:
-            item_href_suffix = f"?plan_id={plan_id}" if plan_id else ""
+            item_href_suffix = escape(f"?plan_id={plan_id}") if plan_id else ""
             cards = "".join(f"""
                   <a class="item-card" href="/build/items/{doc['_id']}{item_href_suffix}">
                     <div class="item-card-content">
