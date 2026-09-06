@@ -370,7 +370,10 @@ async def test_plan_detail_renders_a_single_job(
     assert "Tritanium" in response.text
     assert '<div class="label">Jobs</div>' in response.text
     assert '<div class="value">1</div>' in response.text
-    assert '<a class="btn btn-primary plan-header-action" href="/build/items?plan_id=' in response.text
+    assert (
+        '<a class="btn btn-primary plan-header-action" href="/build/items?plan_id='
+        in response.text
+    )
 
 
 @respx.mock
