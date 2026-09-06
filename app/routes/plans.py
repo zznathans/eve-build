@@ -30,7 +30,11 @@ def _format_timestamp(value: datetime) -> str:
 def _materials_table(materials: list[build_chain.RawMaterial]) -> str:
     rows = "".join(f"""
           <tr>
-            <td>{escape(material.name)}</td>
+            <td>
+              <img class="mini-table-icon" src="{escape(item_icon_url(material.type_id))}"
+                alt="" onerror="this.style.visibility='hidden'">
+              {escape(material.name)}
+            </td>
             <td>{material.quantity}</td>
             <td>{format_isk(material.quantity * material.unit_price)}</td>
           </tr>
@@ -197,7 +201,7 @@ async def plan_detail(
           <div class="meta">saved {_format_timestamp(cast(datetime, doc["created_at"]))}</div>
         </div>
       </div>
-      <a class="btn btn-primary" href="{add_to_plan_href}">Add to Plan</a>
+      <a class="btn btn-primary plan-header-action" href="{add_to_plan_href}">Add to Plan</a>
     """
 
     total_cost = sum(resolution.raw_material_cost for resolution in resolutions)
@@ -252,12 +256,14 @@ async def plan_detail(
         """
 
     combined_materials = build_chain.aggregate_raw_materials(resolutions)
-    materials_section = section_html("Materials Needed", _materials_table(combined_materials))
+    materials_section = section_html(
+        "Total Bill of Materials", _materials_table(combined_materials)
+    )
 
     body = f"""<div class="page">{header}
       <div class="summary">{stats}</div>
-      {jobs_section}
       {materials_section}
+      {jobs_section}
       <a class="btn btn-secondary back" href="/plans">Back to plans</a>
     </div>"""
     return HTMLResponse(render_page(page_title, body, _DETAIL_STYLE, character=character))

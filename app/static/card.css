@@ -78,5 +78,9 @@ a.item-card:hover { border-color: #4c8bf5; }
 .mini-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
 .mini-table td { padding: 0.15rem 0; line-height: 1.2; color: #9aa4b2; }
 .mini-table td:last-child { text-align: right; color: #e6e6e6; white-space: nowrap; }
+.mini-table-icon {
+  width: 18px; height: 18px; border-radius: 3px; vertical-align: middle;
+  margin-right: 0.4rem;
+}
 .produces-row { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .produces-icon { width: 28px; height: 28px; border-radius: 4px; }

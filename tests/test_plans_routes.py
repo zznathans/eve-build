@@ -370,7 +370,7 @@ async def test_plan_detail_renders_a_single_job(
     assert "Tritanium" in response.text
     assert '<div class="label">Jobs</div>' in response.text
     assert '<div class="value">1</div>' in response.text
-    assert '<a class="btn btn-primary" href="/build/items?plan_id=' in response.text
+    assert '<a class="btn btn-primary plan-header-action" href="/build/items?plan_id=' in response.text
 
 
 @respx.mock
@@ -398,8 +398,8 @@ async def test_plan_detail_aggregates_totals_and_materials_across_jobs(
     assert '<div class="value">2</div>' in response.text  # Jobs tile
     assert "Test Ship" in response.text
     assert "Test Module" in response.text
-    # Materials Needed panel merges both jobs' Tritanium demand: 100 + 100 = 200.
-    assert "Materials Needed" in response.text
+    # Total Bill of Materials panel merges both jobs' Tritanium demand: 100 + 100 = 200.
+    assert "Total Bill of Materials" in response.text
     assert response.text.count("Tritanium") >= 3  # once per job card, plus the combined panel
     assert "<td>200</td>" in response.text
 
