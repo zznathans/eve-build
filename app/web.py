@@ -1,10 +1,29 @@
+import hashlib
 from datetime import UTC, datetime
+from functools import lru_cache
 from html import escape
+from pathlib import Path
 
 from app.models.character import CharacterDocument
 from app.services.locations import LocationInfo
 
 BASE_STYLESHEET = "/static/base.css"
+
+_STATIC_DIR = Path(__file__).parent / "static"
+
+
+@lru_cache
+def _static_version(path: str) -> str:
+    """Short content hash for a /static/... path, appended as a `?v=` query param so a new
+    deploy's CSS isn't served stale from a layer that caches by URL alone (e.g. Cloudflare) -
+    the URL only changes when the file's content does."""
+    file_path = _STATIC_DIR / path.removeprefix("/static/")
+    digest = hashlib.sha256(file_path.read_bytes()).hexdigest()
+    return digest[:8]
+
+
+def static_url(path: str) -> str:
+    return f"{path}?v={_static_version(path)}"
 
 
 def gauge_color(percentage: float) -> str:
@@ -115,6 +134,30 @@ def item_line_html(label: str, value: str) -> str:
     )
 
 
+def summary_stat_html(value: str, label: str) -> str:
+    """One tile inside a `.summary` grid (see card.css) - `value` is raw HTML, `label` is
+    escaped."""
+    return f"""
+      <div class="summary-stat">
+        <div class="value">{value}</div>
+        <div class="label">{escape(label)}</div>
+      </div>
+    """
+
+
+def section_html(title: str, cards_html: str) -> str:
+    """A titled `.section-box` of `.item-card`s (see card.css) - empty string if there are no
+    cards, so callers can drop it from the page without a stray empty box."""
+    if not cards_html:
+        return ""
+    return f"""
+      <div class="section-box">
+        <h2>{escape(title)}</h2>
+        <div class="item-grid">{cards_html}</div>
+      </div>
+    """
+
+
 def humanize_relative_time(target: datetime) -> str:
     seconds = (target - datetime.now(UTC)).total_seconds()
     if seconds <= 0:
@@ -164,6 +207,7 @@ def render_nav(character: CharacterDocument | None) -> str:
           <a href="/assets">Assets</a>
           <a href="/pi">Planets</a>
           <a href="/planetary">PI Schematics</a>
+          <a href="/plans">Plans</a>
         </div>
         <div class="nav-user">
           <img class="nav-avatar" src="{avatar_url}" alt="{character_name}">
@@ -185,7 +229,9 @@ def render_page(
     nav = render_nav(character)
     stylesheets = [extra_stylesheet] if isinstance(extra_stylesheet, str) else extra_stylesheet
     stylesheet_links = "\n  ".join(
-        f'<link rel="stylesheet" href="{href}">' for href in [BASE_STYLESHEET, *stylesheets] if href
+        f'<link rel="stylesheet" href="{static_url(href)}">'
+        for href in [BASE_STYLESHEET, *stylesheets]
+        if href
     )
     return f"""<!doctype html>
 <html lang="en">

@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,6 +18,8 @@ if TYPE_CHECKING:
     T = TypeVar("T", bound=DataclassInstance)
 else:
     T = TypeVar("T")
+
+logger = logging.getLogger("eve-build.character_data")
 
 _ASSETS_CACHE_TTL_SECONDS = 60 * 60
 _BLUEPRINTS_CACHE_TTL_SECONDS = 60 * 60
@@ -146,12 +149,24 @@ async def get_character_industry_jobs(
 async def _fetch_colony_records(
     settings: Settings, access_token: str, character_id: int
 ) -> list[esi.ColonyRecord]:
+    """A colony detail fetch failure is isolated to that one planet - it's logged and
+    skipped rather than raised, so one bad/unreachable planet doesn't block the rest of
+    this character's colonies (which share a single cache entry) from refreshing."""
     summaries = await esi.get_character_colonies(settings, access_token, character_id)
     records = []
     for summary in summaries:
-        detail = await esi.get_character_colony_detail(
-            settings, access_token, character_id, summary.planet_id
-        )
+        try:
+            detail = await esi.get_character_colony_detail(
+                settings, access_token, character_id, summary.planet_id
+            )
+        except httpx.HTTPError:
+            logger.warning(
+                "Failed to fetch colony detail (character_id=%s, planet_id=%s)",
+                character_id,
+                summary.planet_id,
+                exc_info=True,
+            )
+            continue
         records.append(
             esi.ColonyRecord(
                 planet_id=summary.planet_id,

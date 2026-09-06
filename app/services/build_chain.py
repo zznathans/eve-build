@@ -12,6 +12,34 @@ _MAX_DEPTH = 15
 
 
 @dataclass
+class _Recipe:
+    output_quantity: int
+    materials: list[dict[str, int]]
+
+
+async def _recipe_for_product(db: AsyncIOMotorDatabase, product_type_id: int) -> _Recipe | None:
+    """A material can be produced either by a manufacturing blueprint/reaction formula, or -
+    for planetary commodities (P1-P4) - by a planetary schematic that breaks it down into
+    lower-tier planetary materials, bottoming out at P0 raw materials (which have neither)."""
+    blueprint = await sde.blueprint_for_product(db, product_type_id)
+    if blueprint is not None:
+        return _Recipe(
+            output_quantity=cast(int, blueprint.get("product_quantity", 1)),
+            materials=cast(list[dict[str, int]], blueprint["materials"]),
+        )
+
+    schematic = await sde.planet_schematic_for_product(db, product_type_id)
+    if schematic is not None:
+        output = cast(dict[str, int], schematic["output"])
+        return _Recipe(
+            output_quantity=output["quantity"],
+            materials=cast(list[dict[str, int]], schematic["inputs"]),
+        )
+
+    return None
+
+
+@dataclass
 class BuildStep:
     type_id: int
     name: str
@@ -50,13 +78,15 @@ async def resolve_build_chain(
     target_quantity: int = 1,
     build_set: frozenset[int] = frozenset(),
 ) -> BuildResolution:
-    """Walks the build chain for a target item: finds the blueprint that produces it, then
-    expands a material into further build steps only if it's in build_set (the target itself
-    is always expanded, since building it is the whole point of the page) - aggregating demand
-    for shared components across the whole tree (a component needed by two different branches
-    gets a single combined step, not two). Anything not expanded is a raw/purchasable material -
-    the current leaves of the chain - whether or not it has a blueprint of its own, so the
-    caller can tell which leaves could be toggled to "build" versus which can only be bought."""
+    """Walks the build chain for a target item: finds the recipe that produces it - a
+    manufacturing blueprint/reaction formula, or (for planetary commodities) a planetary
+    schematic breaking it down into lower-tier planetary materials down to P0 - then expands a
+    material into further build steps only if it's in build_set (the target itself is always
+    expanded, since building it is the whole point of the page) - aggregating demand for shared
+    components across the whole tree (a component needed by two different branches gets a
+    single combined step, not two). Anything not expanded is a raw/purchasable material - the
+    current leaves of the chain - whether or not it has a recipe of its own, so the caller can
+    tell which leaves could be toggled to "build" versus which can only be bought."""
     steps_by_type_id: dict[int, BuildStep] = {}
     raw_totals: dict[int, int] = {}
     raw_buildable: dict[int, bool] = {}
@@ -65,21 +95,21 @@ async def resolve_build_chain(
     depth = 0
     while current_level and depth < _MAX_DEPTH:
         next_level: dict[int, int] = {}
-        blueprint_docs = {
-            type_id: doc
+        recipe_docs = {
+            type_id: recipe
             for type_id in current_level
-            if (doc := await sde.blueprint_for_product(db, type_id)) is not None
+            if (recipe := await _recipe_for_product(db, type_id)) is not None
         }
 
         for type_id, quantity in current_level.items():
-            blueprint = blueprint_docs.get(type_id)
-            if blueprint is None or (type_id != target_type_id and type_id not in build_set):
+            recipe = recipe_docs.get(type_id)
+            if recipe is None or (type_id != target_type_id and type_id not in build_set):
                 raw_totals[type_id] = raw_totals.get(type_id, 0) + quantity
-                raw_buildable[type_id] = blueprint is not None
+                raw_buildable[type_id] = recipe is not None
                 continue
 
-            product_quantity = cast(int, blueprint.get("product_quantity", 1))
-            materials = cast(list[dict[str, int]], blueprint["materials"])
+            product_quantity = recipe.output_quantity
+            materials = recipe.materials
             additional_runs = max(1, math.ceil(quantity / product_quantity))
 
             step = steps_by_type_id.get(type_id)
@@ -173,3 +203,26 @@ def _topological_order(
 
     _visit(target_type_id)
     return ordered
+
+
+def aggregate_raw_materials(resolutions: list[BuildResolution]) -> list[RawMaterial]:
+    """Merges the raw materials needed across multiple resolutions (e.g. every job in a plan)
+    into one combined shopping list, summing quantities for a material two jobs both need.
+    name/unit_price/is_buildable only depend on type_id, so the first occurrence's values are
+    reused rather than re-fetched."""
+    merged: dict[int, RawMaterial] = {}
+    for resolution in resolutions:
+        for material in resolution.raw_materials:
+            existing = merged.get(material.type_id)
+            if existing is None:
+                merged[material.type_id] = RawMaterial(
+                    type_id=material.type_id,
+                    name=material.name,
+                    quantity=material.quantity,
+                    unit_price=material.unit_price,
+                    is_buildable=material.is_buildable,
+                )
+            else:
+                existing.quantity += material.quantity
+
+    return sorted(merged.values(), key=lambda material: material.name)
