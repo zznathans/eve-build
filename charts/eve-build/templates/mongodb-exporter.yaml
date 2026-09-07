@@ -30,6 +30,11 @@ spec:
             - --no-mongodb.direct-connect
             - --collector.diagnosticdata
             - --collector.dbstats
+            {{- if .Values.mongodb.exporter.compatibleMode }}
+            # Also expose the old (v1-style) metric names/labels alongside the current ones,
+            # so dashboards built against the older exporter keep working unmodified.
+            - --compatible-mode
+            {{- end }}
             {{- with .Values.mongodb.exporter.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
