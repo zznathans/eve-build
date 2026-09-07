@@ -2,6 +2,9 @@
 .flow-caret { font-size: 0.8rem; flex-shrink: 0; line-height: 1; }
 .flow-caret-in { color: #f0625a; }
 .flow-caret-out { color: #3ddc84; }
+.sync-notice {
+  font-size: 0.8rem; color: #9aa4b2; margin: -0.25rem 0 1rem;
+}
 .facility-group + .facility-group { margin-top: 1rem; }
 .facility-group h3 {
   font-size: 0.75rem; margin: 0 0 0.5rem; color: #9aa4b2;

@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% from "macros/cards.html" import item_line %}
+{% block title %}{{ page_title }}{% endblock %}
+
+{% macro quantity_table(label, rows) %}
+<div class="item-block">
+  <div class="item-subhead">{{ label }}</div>
+  <table class="mini-table"><tbody>
+    {% for row in rows %}
+    <tr><td>{{ row.name }}</td><td>&times;{{ row.amount }}</td></tr>
+    {% endfor %}
+  </tbody></table>
+</div>
+{% endmacro %}
+
+{% macro card(title, lines=[], bg_icon_url=none) %}
+<div class="item-card">
+  <div class="item-card-content">
+    <div class="item-title">
+      {% if bg_icon_url %}<img class="item-title-icon" src="{{ bg_icon_url }}" alt=""
+        onerror="this.style.visibility='hidden'">{% endif %}{{ title }}
+    </div>
+    {{ caller() if caller is defined else "" }}
+    {% for label, value in lines %}
+    {{ item_line(label, value) }}
+    {% endfor %}
+  </div>
+</div>
+{% endmacro %}
+
+{% macro status_flag(kind, ready_label=none) %}
+{% if kind == "extracting" %}
+<span class="flag flag-build">Extracting &middot; ready {{ ready_label }}</span>
+{% elif kind == "expired" %}
+<span class="flag flag-buy">Extraction expired</span>
+{% else %}
+<span class="flag flag-buy">Idle</span>
+{% endif %}
+{% endmacro %}
+
+{% block body %}
+<div class="page">
+  <div class="header">
+    <div>
+      <div class="name">{{ planet_name }}</div>
+      <div class="meta">{{ type_label }} &middot; {{ system_name }} &middot;
+        Upgrade level {{ upgrade_level }} &middot; {{ num_pins }} pins &middot;
+        Last synced {{ last_synced }}</div>
+    </div>
+  </div>
+
+  <div class="summary">
+    <div class="summary-stat">
+      <div class="value">{{ extractor_cards | length }}</div>
+      <div class="label">Extractors</div>
+    </div>
+    <div class="summary-stat">
+      <div class="value">{{ factory_count }}</div>
+      <div class="label">Factories</div>
+    </div>
+    <div class="summary-stat">
+      <div class="value">{{ storage_cards | length }}</div>
+      <div class="label">Storage</div>
+    </div>
+    <div class="summary-stat">
+      <div class="value">{{ status_flag(status_kind, status_ready_label) }}</div>
+      <div class="label">Status</div>
+    </div>
+  </div>
+  {% if flow_stats %}
+  <div class="summary">
+    {% for stat in flow_stats %}
+    <div class="summary-stat summary-stat-icon">
+      <img class="icon" src="{{ stat.icon_url }}" alt="{{ stat.name }}"
+        onerror="this.style.visibility='hidden'">
+      <span class="flow-caret {{ 'flow-caret-in' if stat.direction == 'in' else 'flow-caret-out' }}">
+        {{ "&#9660;" | safe if stat.direction == "in" else "&#9650;" | safe }}
+      </span>
+      <div>
+        <div class="value">{{ stat.quantity }}</div>
+        <div class="label">{{ stat.name }} ({{ stat.direction }})</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="section-grid">
+    {% if extractor_cards %}
+    <div class="section-box">
+      <h2>Extractors</h2>
+      <div class="item-grid">
+        {% for pin in extractor_cards %}
+        {% call card(pin.name, [("Product", pin.product_name), ("Expires", pin.expiry_label)]) %}
+          {% if pin.buffered %}{{ quantity_table("Buffered", pin.buffered) }}{% endif %}
+        {% endcall %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if factory_groups %}
+    <div class="section-box">
+      <h2>Factories</h2>
+      {% for group in factory_groups %}
+      <div class="facility-group">
+        <h3>{{ group.name }}</h3>
+        <div class="item-grid">
+          {% for pin in group.cards %}
+          {% call card(pin.schematic_name, [("Cycle time", pin.cycle_minutes ~ " min")], bg_icon_url=pin.bg_icon_url) %}
+            {{ quantity_table("Inputs", pin.inputs) }}
+            {{ quantity_table("Output", pin.output) }}
+            {% if pin.buffered %}{{ quantity_table("Buffered", pin.buffered) }}{% endif %}
+          {% endcall %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if storage_cards %}
+    <div class="section-box">
+      <h2>Storage</h2>
+      <div class="sync-notice">Storage contents reflect the last time this colony was
+        viewed in-game (synced {{ last_synced }}) &mdash;
+        open it in the EVE client to refresh this data.</div>
+      <div class="item-grid">
+        {% for pin in storage_cards %}
+        {% if pin.contents %}
+        {% call card(pin.name) %}{{ quantity_table("Contents", pin.contents) }}{% endcall %}
+        {% else %}
+        {{ card(pin.name, [("Contents", "-")]) }}
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <a class="btn btn-secondary back" href="/pi">Back to Planets</a>
+</div>
+{% endblock %}

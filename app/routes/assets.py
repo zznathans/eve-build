@@ -1,9 +1,8 @@
 from collections.abc import Callable
 from dataclasses import dataclass
-from html import escape
-from typing import cast
+from typing import Any, cast
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from redis.asyncio import Redis
@@ -15,14 +14,13 @@ from app.deps import get_current_character
 from app.models.character import CharacterDocument
 from app.services import character_data, esi, locations, market_prices, sde
 from app.services.locations import resolve_container_chain
+from app.templating import templates
 from app.web import (
     format_isk,
     format_number,
     item_icon_url,
-    item_line_html,
     location_label_html,
     location_label_text,
-    render_page,
 )
 
 router = APIRouter(prefix="/assets", tags=["assets"])
@@ -84,33 +82,13 @@ _CATEGORIES: dict[str, Callable[[dict[str, object]], bool]] = {
 _HIDE_IF_EMPTY = frozenset({"Compressed Ore"})
 
 
-def _summary_stat(value: str, label: str) -> str:
-    return f"""
-      <div class="summary-stat">
-        <div class="value">{value}</div>
-        <div class="label">{escape(label)}</div>
-      </div>
-    """
-
-
-def _section(title: str, cards_html: str) -> str:
-    if not cards_html:
-        return ""
-    return f"""
-      <div class="section-box">
-        <h2>{escape(title)}</h2>
-        <div class="item-grid">{cards_html}</div>
-      </div>
-    """
-
-
 @dataclass
 class _CategoryRow:
     type_id: int
     quantity: int
     volume: float
     value: float
-    html: str
+    row: dict[str, object]
 
 
 def _unit_volume(type_doc: dict[str, object]) -> float:
@@ -142,36 +120,25 @@ def _category_rows(
     rows = []
     for type_id, quantity in quantity_by_type.items():
         type_doc = type_docs.get(type_id, {})
-        name = escape(str(type_doc.get("name", f"Type {type_id}")))
+        name = str(type_doc.get("name", f"Type {type_id}"))
         row_volume = _unit_volume(type_doc) * quantity
         row_value = _unit_price(price_by_type_id.get(type_id)) * quantity
         location_count = len(locations_by_type[type_id])
-        icon = escape(item_icon_url(type_id))
-        item_href = escape(f"/assets/{type_id}")
-        row_html = f"""
-          <a class="item-card" href="{item_href}">
-            <img class="item-card-center-icon" src="{icon}" alt="" aria-hidden="true"
-              onerror="this.style.visibility='hidden'">
-            <div class="item-card-content">
-              <div class="item-title">
-                <img class="item-title-icon" src="{icon}" alt=""
-                  onerror="this.style.visibility='hidden'">
-                {name}
-              </div>
-              {item_line_html("Quantity", format_number(quantity))}
-              {item_line_html("Volume", f"{format_number(row_volume)} m3")}
-              {item_line_html("Locations", str(location_count))}
-              {item_line_html("Est. value", format_isk(row_value))}
-            </div>
-          </a>
-        """
         rows.append(
             _CategoryRow(
                 type_id=type_id,
                 quantity=quantity,
                 volume=row_volume,
                 value=row_value,
-                html=row_html,
+                row={
+                    "type_id": type_id,
+                    "icon_url": item_icon_url(type_id),
+                    "name": name,
+                    "quantity": format_number(quantity),
+                    "volume": f"{format_number(row_volume)} m3",
+                    "location_count": str(location_count),
+                    "value": format_isk(row_value),
+                },
             )
         )
 
@@ -181,6 +148,7 @@ def _category_rows(
 
 @router.get("", response_class=HTMLResponse)
 async def list_assets(
+    request: Request,
     character: CharacterDocument = Depends(get_current_character),
     db: AsyncIOMotorDatabase = Depends(get_database),
     redis: Redis | None = Depends(get_redis),
@@ -189,8 +157,11 @@ async def list_assets(
     assets, corp_included = await character_data.get_merged_assets(db, redis, settings, character)
 
     if not assets:
-        body = '<div class="page"><h1>Assets</h1><p class="empty">No assets found.</p></div>'
-        return HTMLResponse(render_page("Assets", body, _LIST_STYLE, character=character))
+        return templates.TemplateResponse(
+            request,
+            "assets/list.html",
+            {"character": character, "extra_stylesheets": _LIST_STYLE, "sections": []},
+        )
 
     # Resolving every location's *name* requires one ESI call per unresolved location, which is
     # slow on a first load with hundreds of locations - so the overview only ever counts location
@@ -217,46 +188,41 @@ async def list_assets(
     )
     total_locations = len(set(resolved_location_by_item_id.values()))
 
-    corp_note = '<p class="empty">Includes corporation assets.</p>' if corp_included else ""
-    stats = f"""
-      {corp_note}
-      <div class="summary">
-        {_summary_stat(format_number(total_quantity), "Total items")}
-        {_summary_stat(str(total_locations), "Locations")}
-        {_summary_stat(f"{format_number(total_volume)} m3", "Total volume")}
-        {_summary_stat(format_isk(total_value), "Est. total value")}
-      </div>
-    """
-
-    cards_by_title = {
-        title: "".join(
-            row.html
-            for row in _category_rows(
-                assets,
-                resolved_location_by_item_id,
-                type_docs,
-                price_by_type_id,
-                _CATEGORIES[title],
-            )
-        )
-        for title in _CATEGORIES
+    stats = {
+        "total_items": format_number(total_quantity),
+        "locations": str(total_locations),
+        "total_volume": f"{format_number(total_volume)} m3",
+        "total_value": format_isk(total_value),
     }
-    sections_html = "".join(
-        _section(title, cards_html or '<p class="empty">None found.</p>')
-        for title, cards_html in cards_by_title.items()
-        if cards_html or title not in _HIDE_IF_EMPTY
-    )
 
-    body = f"""<div class="page">
-      <h1>Assets</h1>
-      {stats}
-      <div class="section-grid">{sections_html}</div>
-    </div>"""
-    return HTMLResponse(render_page("Assets", body, _LIST_STYLE, character=character))
+    rows_by_title = {
+        title: _category_rows(
+            assets, resolved_location_by_item_id, type_docs, price_by_type_id, matches
+        )
+        for title, matches in _CATEGORIES.items()
+    }
+    sections = [
+        {"title": title, "rows": [entry.row for entry in rows]}
+        for title, rows in rows_by_title.items()
+        if rows or title not in _HIDE_IF_EMPTY
+    ]
+
+    return templates.TemplateResponse(
+        request,
+        "assets/list.html",
+        {
+            "character": character,
+            "extra_stylesheets": _LIST_STYLE,
+            "corp_included": corp_included,
+            "stats": stats,
+            "sections": sections,
+        },
+    )
 
 
 @router.get("/{type_id}", response_class=HTMLResponse)
 async def item_detail(
+    request: Request,
     type_id: int,
     character: CharacterDocument = Depends(get_current_character),
     db: AsyncIOMotorDatabase = Depends(get_database),
@@ -283,7 +249,7 @@ async def item_detail(
     )
     type_docs = await sde.type_docs(db, redis, settings, {type_id})
     type_doc = type_docs.get(type_id, {})
-    name = escape(str(type_doc.get("name", f"Type {type_id}")))
+    name = str(type_doc.get("name", f"Type {type_id}"))
     unit_volume = _unit_volume(type_doc)
 
     price_doc = await market_prices.get_market_price(db, type_id)
@@ -294,65 +260,43 @@ async def item_detail(
     total_volume = unit_volume * total_quantity
     total_value = average_price * total_quantity
 
-    icon = escape(item_icon_url(type_id))
-    header = f"""
-      <div class="header">
-        <img class="icon" src="{icon}" alt="{name}"
-          onerror="this.style.visibility='hidden'">
-        <div>
-          <div class="name">{name}</div>
-          <div class="meta">{format_number(unit_volume)} m3 / unit</div>
-        </div>
-      </div>
-    """
-
-    market_section = f"""
-      <h2>Market data</h2>
-      <div class="summary">
-        {_summary_stat(format_isk(average_price), "Average price")}
-        {_summary_stat(format_isk(adjusted_price), "Adjusted price")}
-      </div>
-    """
-
-    owned_section = f"""
-      <h2>What you own</h2>
-      <div class="summary">
-        {_summary_stat(format_number(total_quantity), "Total quantity")}
-        {_summary_stat(f"{format_number(total_volume)} m3", "Total volume")}
-        {_summary_stat(format_isk(total_value), "Est. total value")}
-      </div>
-    """
-
-    location_cards = "".join(
-        f"""
-          <a class="item-card" href="{escape(f"/assets/locations/{location_id}")}">
-            <div class="item-card-content">
-              <div class="item-title">
-                <span>{location_label_html(location_id, location_info.get(location_id))}</span>
-              </div>
-              {item_line_html("Quantity", format_number(quantity))}
-            </div>
-          </a>
-        """
+    location_cards = [
+        {
+            "location_id": location_id,
+            "location_label": location_label_html(location_id, location_info.get(location_id)),
+            "quantity": format_number(quantity),
+        }
         for location_id, quantity in sorted(
             quantity_by_location.items(), key=lambda item: item[1], reverse=True
         )
-    )
-    locations_section = _section("Locations", location_cards)
+    ]
 
-    body = f"""<div class="page">{header}
-      {market_section}
-      {owned_section}
-      {locations_section}
-      <a class="btn btn-secondary back" href="/assets">Back to assets</a>
-    </div>"""
-    return HTMLResponse(
-        render_page(f"{name} - eve-build", body, _DETAIL_STYLE, character=character)
+    return templates.TemplateResponse(
+        request,
+        "assets/detail.html",
+        {
+            "character": character,
+            "extra_stylesheets": _DETAIL_STYLE,
+            "name": name,
+            "icon_url": item_icon_url(type_id),
+            "unit_volume": format_number(unit_volume),
+            "market": {
+                "average_price": format_isk(average_price),
+                "adjusted_price": format_isk(adjusted_price),
+            },
+            "owned": {
+                "total_quantity": format_number(total_quantity),
+                "total_volume": f"{format_number(total_volume)} m3",
+                "total_value": format_isk(total_value),
+            },
+            "location_cards": location_cards,
+        },
     )
 
 
 @router.get("/locations/{location_id}", response_class=HTMLResponse)
 async def location_detail(
+    request: Request,
     location_id: int,
     character: CharacterDocument = Depends(get_current_character),
     db: AsyncIOMotorDatabase = Depends(get_database),
@@ -390,57 +334,47 @@ async def location_detail(
     total_quantity = 0
     total_volume = 0.0
     total_value = 0.0
-    rows: list[tuple[float, str]] = []
+    entries: list[tuple[float, dict[str, Any]]] = []
     for type_id, quantity in quantity_by_type.items():
         type_doc = type_docs.get(type_id, {})
-        name = escape(str(type_doc.get("name", f"Type {type_id}")))
+        name = str(type_doc.get("name", f"Type {type_id}"))
         row_volume = _unit_volume(type_doc) * quantity
         row_value = _unit_price(price_by_type_id.get(type_id)) * quantity
         total_quantity += quantity
         total_volume += row_volume
         total_value += row_value
-        icon = escape(item_icon_url(type_id))
-        item_href = escape(f"/assets/{type_id}")
-        rows.append(
+        entries.append(
             (
                 row_volume,
-                f"""
-                  <a class="item-card" href="{item_href}">
-                    <img class="item-card-center-icon" src="{icon}" alt="" aria-hidden="true"
-                      onerror="this.style.visibility='hidden'">
-                    <div class="item-card-content">
-                      <div class="item-title">
-                        <img class="item-title-icon" src="{icon}" alt=""
-                          onerror="this.style.visibility='hidden'">
-                        {name}
-                      </div>
-                      {item_line_html("Quantity", format_number(quantity))}
-                      {item_line_html("Volume", f"{format_number(row_volume)} m3")}
-                      {item_line_html("Est. value", format_isk(row_value))}
-                    </div>
-                  </a>
-                """,
+                {
+                    "type_id": type_id,
+                    "icon_url": item_icon_url(type_id),
+                    "name": name,
+                    "quantity": format_number(quantity),
+                    "volume": f"{format_number(row_volume)} m3",
+                    "value": format_isk(row_value),
+                },
             )
         )
 
-    rows.sort(key=lambda row: row[0], reverse=True)
-    cards_html = "".join(html for _, html in rows)
+    entries.sort(key=lambda entry: entry[0], reverse=True)
 
-    stats = f"""
-      <div class="summary">
-        {_summary_stat(format_number(total_quantity), "Total items")}
-        {_summary_stat(str(len(quantity_by_type)), "Distinct items")}
-        {_summary_stat(f"{format_number(total_volume)} m3", "Total volume")}
-        {_summary_stat(format_isk(total_value), "Est. total value")}
-      </div>
-    """
+    stats = {
+        "total_items": format_number(total_quantity),
+        "distinct_items": str(len(quantity_by_type)),
+        "total_volume": f"{format_number(total_volume)} m3",
+        "total_value": format_isk(total_value),
+    }
 
-    body = f"""<div class="page">
-      <h1>{location_heading}</h1>
-      {stats}
-      <div class="item-grid">{cards_html}</div>
-      <a class="btn btn-secondary back" href="/assets">Back to assets</a>
-    </div>"""
-    return HTMLResponse(
-        render_page(f"{location_title} - eve-build", body, _LIST_STYLE, character=character)
+    return templates.TemplateResponse(
+        request,
+        "assets/location.html",
+        {
+            "character": character,
+            "extra_stylesheets": _LIST_STYLE,
+            "location_heading": location_heading,
+            "location_title": location_title,
+            "stats": stats,
+            "rows": [row for _, row in entries],
+        },
     )

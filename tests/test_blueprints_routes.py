@@ -488,6 +488,28 @@ async def test_blueprint_detail_computes_buildable_counts(
 
 
 @respx.mock
+async def test_blueprint_detail_shows_add_to_plan_button(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_sde(mongo_db)
+    _mock_blueprints(test_settings)
+    _mock_assets(test_settings, on_site=6, elsewhere=20)
+    respx.get(f"{test_settings.esi_base_url}/universe/stations/{STATION_ID}").mock(
+        return_value=Response(200, json={"name": "Jita IV - Moon 4"})
+    )
+
+    response = client.get(f"/blueprints/{BLUEPRINT_ITEM_ID}")
+
+    assert response.status_code == 200
+    assert "Add to Plan" in response.text
+    assert 'href="/plans/create?type_id=587&amp;qty=1"' in response.text
+
+
+@respx.mock
 async def test_blueprint_detail_shows_price_info_per_run(
     client: TestClient,
     test_settings: Settings,

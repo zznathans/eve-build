@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "macros/cards.html" import item_line %}
+{% block title %}Planets - eve-build{% endblock %}
+{% macro status_flag(kind, ready_label=none) %}
+{% if kind == "extracting" %}
+<span class="flag flag-build">Extracting &middot; ready {{ ready_label }}</span>
+{% elif kind == "idle_expired" %}
+<span class="flag flag-buy">Idle &middot; extraction expired</span>
+{% else %}
+<span class="flag flag-buy">Idle</span>
+{% endif %}
+{% endmacro %}
+{% block body %}
+<div class="page">
+  <h1>Planets</h1>
+  <div class="item-grid planet-grid">
+    {% for colony in colonies %}
+    <a class="item-card" href="/pi/{{ colony.planet_id }}">
+      <div class="item-card-content">
+        <div class="item-title">{{ colony.planet_name }}</div>
+        {% if colony.produced_items %}
+        <div class="item-block">
+          <div class="item-subhead">Produces</div>
+          <div class="produces-row">
+            {% for item in colony.produced_items %}
+            <img class="produces-icon" src="{{ item.icon_url }}" alt="{{ item.name }}"
+              title="{{ item.name }}" onerror="this.style.visibility='hidden'">
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        {{ item_line("Type", colony.type_label) }}
+        {{ item_line("System", colony.system_name) }}
+        {{ item_line("Upgrade level", colony.upgrade_level) }}
+        {{ item_line("Extractors", colony.extractor_count) }}
+        {{ item_line("Factories", colony.factory_count) }}
+        {{ item_line("Storage", colony.storage_count) }}
+        {{ item_line("Status", status_flag(colony.status_kind, colony.status_ready_label)) }}
+        {{ item_line("Last synced", colony.last_synced) }}
+      </div>
+    </a>
+    {% endfor %}
+    {% for _ in range(empty_slots) %}
+    <div class="item-card item-card-empty">Empty</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

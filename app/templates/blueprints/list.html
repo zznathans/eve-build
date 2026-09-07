@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "macros/cards.html" import item_line %}
+{% block title %}Blueprints{% endblock %}
+{% block body %}
+<div class="page">
+  <h1>Blueprints</h1>
+  <a class="btn btn-secondary catalog-link" href="/blueprints/catalog">Search all blueprints</a>
+  {% if corp_note %}<p class="empty">{{ corp_note }}</p>{% endif %}
+
+  <form method="get" class="filters">
+    <input type="hidden" name="f" value="1">
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="hidden" name="dir" value="{{ direction }}">
+    <input type="text" name="search" value="{{ search }}" placeholder="Search by name">
+    {% for option in checkbox_options %}
+    <label>
+      <input type="checkbox" name="show" value="{{ option.value }}"
+        {{ "checked" if option.checked else "" }} onchange="this.form.submit()">
+      {{ option.label }}
+    </label>
+    {% endfor %}
+    <select name="location" onchange="this.form.submit()">
+      <option value="">All locations</option>
+      {% for opt in location_options %}
+      <option value="{{ opt.value }}" {{ "selected" if opt.selected else "" }}>{{ opt.label }}</option>
+      {% endfor %}
+    </select>
+  </form>
+
+  {% if rows %}
+  <div class="sort-links">{{ sort_links_html | safe }}</div>
+  <div class="item-grid">
+    {% for row in rows %}
+    <a class="item-card" href="/blueprints/{{ row.item_id }}">
+      <div class="item-card-content">
+        <div class="item-title">
+          <img class="item-title-icon" src="{{ row.bg_icon_url }}" alt=""
+            onerror="this.style.visibility='hidden'">
+          {{ row.name }}
+        </div>
+        {{ item_line("Status", row.status_text | safe) }}
+        {{ item_line("Location", row.location_label | safe) }}
+        {{ item_line("ME", row.me_gauge | safe) }}
+        {{ item_line("TE", row.te_gauge | safe) }}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% elif blueprints_exist %}
+  <p class="empty">No blueprints match the current filters.</p>
+  {% else %}
+  <p class="empty">No blueprints found.</p>
+  {% endif %}
+</div>
+{% endblock %}

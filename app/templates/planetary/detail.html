@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="header">
+    <img class="icon" src="{{ icon_url }}" alt="{{ output_name }}" onerror="this.style.visibility='hidden'">
+    <div>
+      <div class="name">{{ schematic_name }}</div>
+      <div class="meta">Produces {{ output_name }} &times;{{ output_quantity }} &middot;
+        {{ cycle_minutes }} min cycle</div>
+    </div>
+  </div>
+
+  {% if not tier_data_available %}
+  <p class="empty">No tier data available for this schematic.</p>
+  {% else %}
+  <table>
+    <thead>
+      <tr>
+        <th>Starting tier</th><th>Material cost</th><th>Output value</th>
+        <th>Profit</th><th>Profit / day</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in summary_rows %}
+      <tr>
+        <td>{{ row.tier_label }}</td>
+        <td>{{ row.cost }}</td>
+        <td>{{ row.output_value }}</td>
+        <td>{{ row.profit }}</td>
+        <td>{{ row.profit_per_day }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% for section in detail_sections %}
+  <h2>{{ section.tier_label }}</h2>
+  <table>
+    <thead>
+      <tr><th>Material</th><th>Quantity</th><th>Unit price</th><th>Subtotal</th></tr>
+    </thead>
+    <tbody>
+      {% for row in section.rows %}
+      <tr>
+        <td>
+          <div class="material-cell">
+            <img class="icon" src="{{ row.icon_url }}" alt="{{ row.name }}"
+              onerror="this.style.visibility='hidden'">
+            <div>{{ row.name }}</div>
+          </div>
+        </td>
+        <td>{{ row.quantity }}</td>
+        <td>{{ row.unit_price }}</td>
+        <td>{{ row.subtotal }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endfor %}
+  {% endif %}
+  <a class="btn btn-secondary back" href="/planetary">Back to planetary industry</a>
+</div>
+{% endblock %}

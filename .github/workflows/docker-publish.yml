@@ -65,6 +65,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Reuse the buildcache registry tag docker-build.yml keeps warm from PR builds -
+          # a release almost always follows a merged, already-built PR, so this turns most
+          # release builds into a near-instant cache hit instead of a cold rebuild. Read-only
+          # (no cache-to): publishing is infrequent and shouldn't be the thing that decides
+          # what's in the shared cache - PR builds already do that on every same-repo PR.
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
 
       - name: Generate artifact attestation
         uses: actions/attest@v4

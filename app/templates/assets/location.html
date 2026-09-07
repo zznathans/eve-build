@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "macros/cards.html" import item_line, summary_stat %}
+{% block title %}{{ location_title }} - eve-build{% endblock %}
+{% block body %}
+<div class="page">
+  <h1>{{ location_heading | safe }}</h1>
+  <div class="summary">
+    {{ summary_stat(stats.total_items, "Total items") }}
+    {{ summary_stat(stats.distinct_items, "Distinct items") }}
+    {{ summary_stat(stats.total_volume, "Total volume") }}
+    {{ summary_stat(stats.total_value, "Est. total value") }}
+  </div>
+  <div class="item-grid">
+    {% for row in rows %}
+    <a class="item-card" href="/assets/{{ row.type_id }}">
+      <img class="item-card-center-icon" src="{{ row.icon_url }}" alt="" aria-hidden="true"
+        onerror="this.style.visibility='hidden'">
+      <div class="item-card-content">
+        <div class="item-title">
+          <img class="item-title-icon" src="{{ row.icon_url }}" alt=""
+            onerror="this.style.visibility='hidden'">
+          {{ row.name }}
+        </div>
+        {{ item_line("Quantity", row.quantity) }}
+        {{ item_line("Volume", row.volume) }}
+        {{ item_line("Est. value", row.value) }}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  <a class="btn btn-secondary back" href="/assets">Back to assets</a>
+</div>
+{% endblock %}

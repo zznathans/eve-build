@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% from "macros/cards.html" import item_line, summary_stat %}
+{% block title %}{{ page_title }}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="header">
+    <img class="icon" src="{{ item_icon_url }}" alt="{{ item_name }}"
+      onerror="this.style.visibility='hidden'">
+    <div>
+      <div class="name">{{ item_name }}</div>
+      <form method="get" class="qty-form">
+        <label for="qty">Desired output</label>
+        <input type="number" id="qty" name="qty" value="{{ qty }}" min="1">
+        <input type="hidden" name="build" value="{{ build }}">
+        {% if plan_id %}<input type="hidden" name="plan_id" value="{{ plan_id }}">{% endif %}
+        <button type="submit" class="btn btn-secondary">Update</button>
+      </form>
+    </div>
+  </div>
+
+  {% if not is_buildable %}
+  <p class="empty">No blueprint or reaction formula produces this item - it can only
+    be bought, not built.</p>
+  <a class="btn btn-secondary back" href="/build/items">Back to search</a>
+  {% else %}
+  <div class="summary">
+    {{ summary_stat(stats.cost, "Raw material cost") }}
+    {{ summary_stat(stats.value, "Output value") }}
+    {{ summary_stat(stats.profit, "Profit") }}
+    {{ summary_stat(stats.step_count, "Build steps") }}
+  </div>
+
+  {% if materials %}
+  <div class="section-box">
+    <h2>Materials</h2>
+    <div class="item-grid">
+      {% for material in materials %}
+      <div class="item-card{{ ' item-card-buildable' if material.is_buildable else '' }}">
+        <div class="item-card-content">
+          <div class="item-title">
+            <img class="item-title-icon" src="{{ material.icon_url }}" alt=""
+              onerror="this.style.visibility='hidden'">
+            {{ material.name }}
+            {{ material.flag_html | safe }}
+          </div>
+          {{ item_line("Quantity", material.quantity) }}
+          {{ item_line("Est. cost", material.cost) }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if steps %}
+  <div class="section-box">
+    <h2>Build steps</h2>
+    <div class="item-grid">
+      {% for step in steps %}
+      <div class="item-card">
+        <div class="item-card-content">
+          <div class="item-title">
+            <img class="item-title-icon" src="{{ step.icon_url }}" alt=""
+              onerror="this.style.visibility='hidden'">
+            {{ step.name }}
+            {{ step.buy_flag_html | safe }}
+          </div>
+          {{ item_line("Runs", step.runs) }}
+          {{ item_line("Produces", step.quantity_needed) }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if add_to_plan_href %}
+  <a class="btn btn-primary" href="{{ add_to_plan_href }}">Add to Plan</a>
+  {% endif %}
+  <a class="btn btn-secondary back" href="/build/items">Back to search</a>
+  {% endif %}
+</div>
+{% endblock %}

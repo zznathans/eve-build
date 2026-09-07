@@ -22,6 +22,12 @@ spec:
           image: percona/mongodb_exporter:{{ .Values.mongodb.exporter.version }}
           args:
             - --mongodb.global-conn-pool
+            # A direct connection can't be made when the URI names multiple hosts or uses
+            # mongodb+srv:// (SRV-discovered replica set members) - both are the normal case
+            # here (the bundled MongoDBCommunity connection string lists every member, and
+            # externalSecret assembles a mongodb+srv:// URI for DigitalOcean Managed MongoDB)
+            # - so direct-connect must stay off or the exporter fails to connect at all.
+            - --no-mongodb.direct-connect
             - --collector.diagnosticdata
             - --collector.dbstats
             {{- with .Values.mongodb.exporter.extraArgs }}

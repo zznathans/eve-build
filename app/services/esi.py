@@ -409,8 +409,8 @@ async def get_character_colony_detail(
     headers = _headers(settings, access_token)
 
     async with httpx.AsyncClient() as client:
-        response = await _timed_get(
-            client, url, endpoint="characters/planet_detail", headers=headers
+        response = await _get_with_retry(
+            client, url, endpoint="characters/planet_detail", settings=settings, headers=headers
         )
 
     data = response.json()

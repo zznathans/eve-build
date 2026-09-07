@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Planets - eve-build{% endblock %}
+{% block body %}
+<div class="page">
+  <h1>Planets</h1>
+  <div class="scope-notice">
+    Planets needs an extra permission this character hasn't granted yet.
+    <a href="/auth/logout">Log out</a> and log back in to grant access.
+  </div>
+</div>
+{% endblock %}

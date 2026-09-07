@@ -1,2 +1,19 @@
 .page { max-width: 80rem; margin: 0 auto; padding: 2rem 1.5rem; }
 .short { color: #f0625a; }
+
+.plan-header-action { display: inline-block; margin-bottom: 1.5rem; }
+
+.qty-form {
+  display: flex; align-items: center; gap: 0.6rem;
+  margin-top: 0.4rem; font-size: 0.85rem; color: #9aa4b2;
+}
+.qty-form input[type="number"] {
+  background: #1a1d24; color: #e6e6e6;
+  border: 1px solid #2a2e37; border-radius: 6px; padding: 0.3rem 0.5rem;
+  font-size: 0.85rem; width: 6rem;
+}
+.qty-form { flex-wrap: wrap; }
+
+/* Wider than the default .item-grid columns (card.css) - a plan job card's qty-form
+   (label + number input + Update + Remove) needs more room than a plain item card. */
+.job-grid { grid-template-columns: repeat(auto-fill, minmax(20rem, 24rem)); }

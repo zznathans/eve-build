@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "macros/cards.html" import item_line, summary_stat %}
+{% block title %}{{ blueprint_name }} - eve-build{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="header">
+    <img class="icon" src="{{ blueprint_icon_url }}" alt="{{ blueprint_name }}"
+      onerror="this.style.visibility='hidden'">
+    <div>
+      <div class="name">{{ blueprint_name }}</div>
+      <div class="meta">ME {{ material_efficiency }} / TE {{ time_efficiency }}
+        &middot; {{ status_text }}</div>
+      <div class="meta">{{ location_label | safe }}</div>
+    </div>
+  </div>
+
+  {% if not sde_available %}
+  <p class="empty">No manufacturing data available for this blueprint.</p>
+  {% else %}
+  <div class="summary">
+    {{ summary_stat(on_site_buildable, "Buildable on-site") }}
+    {{ summary_stat(global_buildable, "Buildable (all assets)") }}
+    {% for stat in price_figures %}
+    {{ summary_stat(stat.value, stat.label) }}
+    {% endfor %}
+  </div>
+  {% if add_to_plan_href %}
+  <a class="btn btn-primary" href="{{ add_to_plan_href }}">Add to Plan</a>
+  {% endif %}
+
+  {% if materials %}
+  <div class="section-box">
+    <h2>Materials</h2>
+    <div class="item-grid">
+      {% for material in materials %}
+      <div class="item-card">
+        <img class="item-card-center-icon" src="{{ material.icon_url }}" alt="" aria-hidden="true"
+          onerror="this.style.visibility='hidden'">
+        <div class="item-card-content">
+          <div class="item-title">{{ material.name }}</div>
+          {{ item_line("Needed / run", material.needed) }}
+          {{ item_line("On-site", material.on_site_cell | safe) }}
+          {{ item_line("All assets", material.global_cell | safe) }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+  <a class="btn btn-secondary back" href="/blueprints">Back to blueprints</a>
+</div>
+{% endblock %}

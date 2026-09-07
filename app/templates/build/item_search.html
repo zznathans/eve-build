@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Build an item{% endblock %}
+{% block body %}
+<div class="page">
+  <h1>What do you want to build?</h1>
+  <form method="get" class="filters">
+    <input type="text" name="q" value="{{ query }}"
+      placeholder="Search for an item to build" autofocus>
+    {% if plan_id %}<input type="hidden" name="plan_id" value="{{ plan_id }}">{% endif %}
+  </form>
+  {% if results_state == "no_match" %}
+  <p class="empty">No items match your search.</p>
+  {% elif results_state == "too_short" %}
+  <p class="empty">Keep typing - search needs at least 2 characters.</p>
+  {% elif results_state == "results" %}
+  <div class="item-grid">
+    {% for item in items %}
+    <a class="item-card" href="/build/items/{{ item.type_id }}{{ item_href_suffix }}">
+      <div class="item-card-content">
+        <div class="item-title">
+          <img class="item-title-icon" src="{{ item.icon_url }}" alt=""
+            onerror="this.style.visibility='hidden'">
+          {{ item.name }}
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

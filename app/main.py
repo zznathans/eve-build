@@ -26,6 +26,7 @@ from app.routes import (
     market_prices,
     pi,
     planetary,
+    plans,
     settings,
 )
 from app.services.db_gauges import refresh_db_gauges_periodically
@@ -132,4 +133,5 @@ app.include_router(jobs.router)
 app.include_router(market_prices.router)
 app.include_router(pi.router)
 app.include_router(planetary.router)
+app.include_router(plans.router)
 app.include_router(settings.router)

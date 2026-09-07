@@ -23,6 +23,8 @@ a { color: inherit; }
 .btn-primary:hover { background: #3b76e0; }
 .btn-secondary { background: transparent; color: #9aa4b2; border: 1px solid #2a2e37; }
 .btn-secondary:hover { color: #e6e6e6; border-color: #4c8bf5; }
+.btn-danger { background: transparent; color: #e2725b; border: 1px solid #4a2a26; }
+.btn-danger:hover { color: #ff7b5c; border-color: #e2725b; }
 .navbar {
   display: flex;
   align-items: center;

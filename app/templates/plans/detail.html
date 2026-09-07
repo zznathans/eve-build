@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "macros/cards.html" import summary_stat %}
+{% block title %}Plan - eve-build{% endblock %}
+
+{% macro materials_table(materials) %}
+<table class="mini-table">
+  <tbody>
+    {% for material in materials %}
+    <tr>
+      <td>
+        <img class="mini-table-icon" src="{{ material.icon_url }}" alt=""
+          onerror="this.style.visibility='hidden'">
+        {{ material.name }}
+      </td>
+      <td>{{ material.quantity }}</td>
+      <td>{{ material.value }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+{% block body %}
+<div class="page">
+  <div class="header">
+    <div>
+      <div class="name">Plan</div>
+      <div class="meta">saved {{ created_at }}</div>
+    </div>
+  </div>
+  <a class="btn btn-primary plan-header-action" href="/build/items?plan_id={{ plan_id }}">Add to Plan</a>
+
+  <div class="summary">
+    {{ summary_stat(stats.total_cost, "Total raw material cost") }}
+    {{ summary_stat(stats.total_value, "Total output value") }}
+    {{ summary_stat(stats.total_profit, "Total profit") }}
+    {{ summary_stat(stats.job_count, "Jobs") }}
+  </div>
+
+  {% if combined_materials %}
+  <div class="section-box">
+    <h2>Total Bill of Materials</h2>
+    {{ materials_table(combined_materials) }}
+  </div>
+  {% endif %}
+
+  {% if jobs %}
+  <div class="section-box">
+    <h2>Jobs</h2>
+    <div class="item-grid job-grid">
+      {% for job in jobs %}
+      <div class="item-card">
+        <div class="item-card-content">
+          <div class="item-title">
+            <img class="item-title-icon" src="{{ job.icon_url }}" alt=""
+              onerror="this.style.visibility='hidden'">
+            {{ job.target_name }}
+          </div>
+          <form method="get" action="/plans/{{ plan_id }}/jobs/{{ job.job_id }}/update" class="qty-form">
+            <label for="qty-{{ job.job_id }}">Desired output</label>
+            <input type="number" id="qty-{{ job.job_id }}" name="qty"
+              value="{{ job.target_quantity }}" min="1">
+            <button type="submit" class="btn btn-secondary">Update</button>
+            {% if job.delete_enabled %}
+            <a class="btn btn-danger" href="/plans/{{ plan_id }}/jobs/{{ job.job_id }}/delete">Remove</a>
+            {% endif %}
+          </form>
+          <div class="item-line"><span>Cost</span>
+            <span class="item-value">{{ job.cost }}</span></div>
+          <div class="item-line"><span>Profit</span>
+            <span class="item-value">{{ job.profit }}</span></div>
+          {{ materials_table(job.materials) }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  <a class="btn btn-secondary back" href="/plans">Back to plans</a>
+</div>
+{% endblock %}
