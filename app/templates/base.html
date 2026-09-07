@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}eve-build{% endblock %}</title>
+  <link rel="icon" href="{{ FAVICON_URL }}">
+  <link rel="stylesheet" href="{{ static_url('/static/base.css') }}">
+  {% for href in extra_stylesheets | default([]) %}
+  <link rel="stylesheet" href="{{ static_url(href) }}">
+  {% endfor %}
+</head>
+<body>
+{% include "_nav.html" %}
+{% block body %}{% endblock %}
+</body>
+</html>

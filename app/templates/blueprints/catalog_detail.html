@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "macros/cards.html" import item_line, summary_stat %}
+{% block title %}{{ blueprint_name }} - eve-build{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="header">
+    <img class="icon" src="{{ icon_url }}" alt="{{ blueprint_name }}"
+      onerror="this.style.visibility='hidden'">
+    <div>
+      <div class="name">{{ blueprint_name }}
+        <span class="flag {{ tech_level_flag_class }}">{{ tech_level_label }}</span>
+      </div>
+      <div class="meta">{{ produced_text | safe }}</div>
+    </div>
+  </div>
+
+  <div class="summary">
+    {% for stat in stats %}
+    {{ summary_stat(stat.value, stat.label) }}
+    {% endfor %}
+  </div>
+  {% if build_href %}
+  <a class="btn btn-primary" href="{{ build_href }}">Build this</a>
+  {% endif %}
+
+  {% if materials %}
+  <div class="section-box">
+    <h2>Materials</h2>
+    <div class="item-grid">
+      {% for material in materials %}
+      <div class="item-card">
+        <img class="item-card-center-icon" src="{{ material.icon_url }}" alt="" aria-hidden="true"
+          onerror="this.style.visibility='hidden'">
+        <div class="item-card-content">
+          <div class="item-title">{{ material.name }}</div>
+          {{ item_line("Quantity / run", material.quantity) }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  <a class="btn btn-secondary back" href="/blueprints/catalog">Back to search</a>
+</div>
+{% endblock %}

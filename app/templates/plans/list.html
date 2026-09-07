@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Plans{% endblock %}
+{% block body %}
+<div class="page">
+  <h1>Plans</h1>
+  {% if not plans %}
+  <p class="empty">No plans saved yet - build something and add it to a plan.</p>
+  {% else %}
+  <div class="item-grid">
+    {% for p in plans %}
+    <a class="item-card" href="/plans/{{ p.plan_id }}">
+      <div class="item-card-content">
+        <div class="item-title">
+          <img class="item-title-icon" src="{{ p.icon_url }}" alt=""
+            onerror="this.style.visibility='hidden'">
+          {{ p.name }}
+        </div>
+        <div class="item-line"><span>Jobs</span>
+          <span class="item-value">{{ p.jobs_text }}</span></div>
+        <div class="item-line"><span>Created</span>
+          <span class="item-value">{{ p.created_at }}</span></div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

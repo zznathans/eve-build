@@ -4,10 +4,7 @@ from functools import lru_cache
 from html import escape
 from pathlib import Path
 
-from app.models.character import CharacterDocument
 from app.services.locations import LocationInfo
-
-BASE_STYLESHEET = "/static/base.css"
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
@@ -124,40 +121,6 @@ def location_label_text(location_id: int, info: LocationInfo | None) -> str:
     return f"{label} ({_rounded_security_status(info.security_status):.1f})"
 
 
-def item_line_html(label: str, value: str) -> str:
-    """One label/value row inside a `.item-card` (see card.css) - `label` is escaped,
-    `value` is raw HTML (callers pass already-escaped/pre-rendered content, e.g. a
-    gauge widget or another escaped string)."""
-    return (
-        f'<div class="item-line"><span>{escape(label)}</span>'
-        f'<span class="item-value">{value}</span></div>'
-    )
-
-
-def summary_stat_html(value: str, label: str) -> str:
-    """One tile inside a `.summary` grid (see card.css) - `value` is raw HTML, `label` is
-    escaped."""
-    return f"""
-      <div class="summary-stat">
-        <div class="value">{value}</div>
-        <div class="label">{escape(label)}</div>
-      </div>
-    """
-
-
-def section_html(title: str, cards_html: str) -> str:
-    """A titled `.section-box` of `.item-card`s (see card.css) - empty string if there are no
-    cards, so callers can drop it from the page without a stray empty box."""
-    if not cards_html:
-        return ""
-    return f"""
-      <div class="section-box">
-        <h2>{escape(title)}</h2>
-        <div class="item-grid">{cards_html}</div>
-      </div>
-    """
-
-
 def humanize_relative_time(target: datetime) -> str:
     seconds = (target - datetime.now(UTC)).total_seconds()
     if seconds <= 0:
@@ -177,73 +140,3 @@ def humanize_relative_time(target: datetime) -> str:
         return "in less than a minute"
 
     return f"in {value} {unit}{'s' if value != 1 else ''}"
-
-
-def render_nav(character: CharacterDocument | None) -> str:
-    if character is None:
-        return """
-          <nav class="navbar">
-            <a class="brand" href="/">eve-build</a>
-            <div class="nav-links">
-              <a href="/build">Build</a>
-              <a href="/blueprints/catalog">Blueprint Catalog</a>
-              <a href="/planetary">PI Schematics</a>
-            </div>
-            <a class="btn btn-primary" href="/auth/login">Log in with EVE Online</a>
-          </nav>
-        """
-
-    avatar_url = escape(
-        f"https://images.evetech.net/characters/{character.character_id}/portrait?size=64"
-    )
-    character_name = escape(character.character_name)
-    return f"""
-      <nav class="navbar">
-        <a class="brand" href="/">eve-build</a>
-        <div class="nav-links">
-          <a href="/">Home</a>
-          <a href="/build">Build</a>
-          <a href="/blueprints">Blueprints</a>
-          <a href="/assets">Assets</a>
-          <a href="/pi">Planets</a>
-          <a href="/planetary">PI Schematics</a>
-          <a href="/plans">Plans</a>
-        </div>
-        <div class="nav-user">
-          <img class="nav-avatar" src="{avatar_url}" alt="{character_name}">
-          <span class="nav-user-name">{character_name}</span>
-          <a class="btn btn-secondary" href="/settings">Settings</a>
-          <a class="btn btn-secondary" href="/auth/logout">Log out</a>
-        </div>
-      </nav>
-    """
-
-
-def render_page(
-    title: str,
-    body: str,
-    extra_stylesheet: str | list[str] = "",
-    *,
-    character: CharacterDocument | None = None,
-) -> str:
-    nav = render_nav(character)
-    stylesheets = [extra_stylesheet] if isinstance(extra_stylesheet, str) else extra_stylesheet
-    stylesheet_links = "\n  ".join(
-        f'<link rel="stylesheet" href="{static_url(href)}">'
-        for href in [BASE_STYLESHEET, *stylesheets]
-        if href
-    )
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{escape(title)}</title>
-  <link rel="icon" href="{FAVICON_URL}">
-  {stylesheet_links}
-</head>
-<body>
-{nav}
-{body}
-</body>
-</html>"""

@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block body %}
+<div class="page">
+  <h1>Settings</h1>
+
+  <div class="card">
+    <h2>Account</h2>
+    <div class="header" style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
+      <img src="{{ account.avatar_url }}" alt="{{ character.character_name }}"
+        style="width: 48px; height: 48px; border-radius: 8px;">
+      <div>
+        <div style="font-weight: 600;">{{ character.character_name }}</div>
+        <div style="color: #9aa4b2; font-size: 0.85rem;">
+          Character ID {{ character.character_id }}
+        </div>
+      </div>
+    </div>
+    <ul class="kv-list">
+      <li><span>Login granted</span><dd>{{ account.created_at }}</dd></li>
+      <li><span>Last refreshed</span><dd>{{ account.updated_at }}</dd></li>
+      <li><span>Login scopes</span><dd class="scopes">{{ account.scopes_text }}</dd></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Data eve-build has stored</h2>
+    <p>
+      Cached copies of your assets, blueprints, and industry jobs (and your
+      corporation's, if connected) so pages load quickly instead of hitting ESI
+      every time. Refreshes automatically after an hour, or force it below.
+    </p>
+    <ul class="kv-list">
+      {% for source in data_sources %}
+      <li>
+        <span>{{ source.label }}
+          {% if source.shared %}<span class="status-shared">(shared with your corp)</span>{% endif %}
+        </span>
+        <dd>{{ source.count }} items &middot; {{ source.last_updated }}</dd>
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="actions">
+      <a class="btn btn-secondary" href="/settings/refresh">Force refresh</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Corporation data</h2>
+    {% if corp %}
+    <p>Connected to <strong>{{ corp.label }}</strong>.</p>
+    <ul class="status-list">
+      {% for row in corp.status_rows %}
+      <li><span>{{ row.label }}</span>
+        {% if row.ok %}
+        <span class="status-ok">Connected &middot; {{ row.count }} found</span>
+        {% else %}
+        <span class="status-missing">No permission &mdash; {{ row.required_role }}</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="actions">
+      <a class="btn btn-secondary" href="/auth/disconnect-corp">Disconnect</a>
+    </div>
+    {% else %}
+    <p>
+      Optionally pull your corporation's assets, blueprints, and industry jobs
+      into eve-build alongside your personal ones, so materials and jobs sitting
+      in corp hangars show up in readiness/buildable calculations too. Corp
+      assets and blueprints require you to hold the Director role in your
+      corporation; corp industry jobs allows Director or Factory_Manager.
+    </p>
+    <div class="actions">
+      <a class="btn btn-primary" href="/auth/connect-corp">Connect corporation data</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card danger">
+    <h2>Clear my data</h2>
+    <p>
+      Deletes everything eve-build has stored about you - cached assets,
+      blueprints, and industry jobs, and your login/corp-connect tokens - and
+      signs you out. eve-build immediately loses the ability to act on your
+      behalf. This doesn't revoke eve-build's access on EVE Online's side; do
+      that from your EVE Online account's third-party application settings if
+      you want that too. Corp-shared data (visible to other connected
+      characters in your corp) isn't affected.
+    </p>
+    <div class="actions">
+      <a class="btn btn-secondary" href="/settings/clear-data"
+        onclick="return confirm(
+          'Delete all eve-build data for this character and sign out? This cannot be undone.'
+        )">
+        Clear my data
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

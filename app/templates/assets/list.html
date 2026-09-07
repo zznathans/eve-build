@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "macros/cards.html" import item_line, summary_stat %}
+{% block title %}Assets{% endblock %}
+{% block body %}
+<div class="page">
+  <h1>Assets</h1>
+  {% if not sections %}
+  <p class="empty">No assets found.</p>
+  {% else %}
+  {% if corp_included %}<p class="empty">Includes corporation assets.</p>{% endif %}
+  <div class="summary">
+    {{ summary_stat(stats.total_items, "Total items") }}
+    {{ summary_stat(stats.locations, "Locations") }}
+    {{ summary_stat(stats.total_volume, "Total volume") }}
+    {{ summary_stat(stats.total_value, "Est. total value") }}
+  </div>
+  <div class="section-grid">
+    {% for section in sections %}
+    <div class="section-box">
+      <h2>{{ section.title }}</h2>
+      {% if section.rows %}
+      <div class="item-grid">
+        {% for row in section.rows %}
+        <a class="item-card" href="/assets/{{ row.type_id }}">
+          <img class="item-card-center-icon" src="{{ row.icon_url }}" alt="" aria-hidden="true"
+            onerror="this.style.visibility='hidden'">
+          <div class="item-card-content">
+            <div class="item-title">
+              <img class="item-title-icon" src="{{ row.icon_url }}" alt=""
+                onerror="this.style.visibility='hidden'">
+              {{ row.name }}
+            </div>
+            {{ item_line("Quantity", row.quantity) }}
+            {{ item_line("Volume", row.volume) }}
+            {{ item_line("Locations", row.location_count) }}
+            {{ item_line("Est. value", row.value) }}
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty">None found.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

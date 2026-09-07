@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}{{ blueprint_name }} - eve-build{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="header">
+    <img class="icon" src="{{ job_icon_url }}" alt="{{ blueprint_name }}"
+      onerror="this.style.visibility='hidden'">
+    <div>
+      <div class="name">{{ blueprint_name }}</div>
+      <div class="meta">{{ activity_name }} &middot; {{ status_label }}</div>
+    </div>
+  </div>
+  <div class="facts">
+    <dl>
+      <dt>Location</dt><dd>{{ location_label | safe }}</dd>
+      <dt>Runs</dt><dd>{{ job.runs }}</dd>
+      <dt>Progress</dt><dd>{{ progress_gauge | safe }}</dd>
+      <dt>Started</dt><dd>{{ job.start_date }}</dd>
+      <dt>Ends</dt><dd>{{ job.end_date }}</dd>
+      {% if product_name %}
+      <dt>Product</dt><dd>{{ product_name }}</dd>
+      {% endif %}
+    </dl>
+  </div>
+  <div class="actions">
+    <a class="btn btn-secondary" href="/blueprints/{{ job.blueprint_id }}">
+      View blueprint
+    </a>
+    <a class="btn btn-secondary" href="/">Back to dashboard</a>
+  </div>
+</div>
+{% endblock %}

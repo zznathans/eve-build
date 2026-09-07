@@ -2,7 +2,6 @@ from app.services.locations import LocationInfo
 from app.web import (
     location_label_html,
     location_label_text,
-    render_page,
     security_status_color,
     security_status_html,
     static_url,
@@ -68,10 +67,3 @@ def test_static_url_appends_a_content_derived_version() -> None:
 
 def test_static_url_changes_when_a_different_file_is_requested() -> None:
     assert static_url("/static/base.css") != static_url("/static/card.css")
-
-
-def test_render_page_cache_busts_stylesheet_links() -> None:
-    html = render_page("Title", "<p>body</p>", "/static/card.css")
-
-    assert f'href="{static_url("/static/base.css")}"' in html
-    assert f'href="{static_url("/static/card.css")}"' in html

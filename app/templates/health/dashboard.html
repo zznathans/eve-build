@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}eve-build{% endblock %}
+{% block body %}
+<div class="page">
+  <h1>Dashboard</h1>
+  <div class="stat-grid">
+    <a class="stat-card" href="/blueprints">
+      <div class="figure">{{ blueprint_count }}</div>
+      <div class="label">Blueprints</div>
+    </a>
+    <a class="stat-card" href="/assets">
+      <div class="figure">{{ asset_count }}</div>
+      <div class="label">Assets</div>
+    </a>
+    <div class="stat-card">
+      <div class="figure">{{ active_job_count }}</div>
+      <div class="label">Running industry jobs</div>
+    </div>
+  </div>
+  <h2>Industry jobs</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Blueprint</th><th>Activity</th><th>Location</th><th>Runs</th>
+        <th>Progress</th><th>Ends</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if job_rows %}
+      {% for row in job_rows %}
+      <tr>
+        <td>
+          <a class="job-bp" href="/jobs/{{ row.job_id }}">
+            <img class="icon" src="{{ row.icon_url }}" alt="{{ row.blueprint_name }}"
+              onerror="this.style.visibility='hidden'">
+            <span>{{ row.blueprint_name }}</span>
+          </a>
+        </td>
+        <td>{{ row.activity_name }}</td>
+        <td>{{ row.location_label | safe }}</td>
+        <td>{{ row.runs }}</td>
+        <td>{{ row.progress_gauge | safe }}</td>
+        <td title="{{ row.end_date }}">{{ row.ends_in }}</td>
+      </tr>
+      {% endfor %}
+      {% else %}
+      <tr><td colspan="6" class="empty">No running industry jobs.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

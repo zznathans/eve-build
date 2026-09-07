@@ -1,8 +1,6 @@
-from dataclasses import dataclass
-from html import escape
-from typing import cast
+from typing import Any, cast
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from redis.asyncio import Redis
@@ -13,7 +11,8 @@ from app.db.redis import get_redis
 from app.deps import get_current_character_optional
 from app.models.character import CharacterDocument
 from app.services import market_prices, sde
-from app.web import format_isk, item_icon_url, render_page
+from app.templating import templates
+from app.web import format_isk, item_icon_url
 
 router = APIRouter(prefix="/planetary", tags=["planetary"])
 
@@ -30,13 +29,7 @@ _TIER_ORDER = (1042, 1034, 1040, 1041)
 _TIER_INDEX_BY_GROUP_ID: dict[int, int] = {1042: 1, 1034: 2, 1040: 3, 1041: 4}
 _OTHER_TIER = "Other"
 _P0_LABEL = "P0 - Raw Materials"
-
-
-@dataclass
-class _Row:
-    tier_group_id: int | None
-    name: str
-    html: str
+_OTHER_GROUP_ID = 0
 
 
 def _profit_per_day(profit: float, cycle_time_seconds: int) -> float:
@@ -81,6 +74,7 @@ def _expand_to_tier(
 
 @router.get("", response_class=HTMLResponse)
 async def list_planet_schematics(
+    request: Request,
     character: CharacterDocument | None = Depends(get_current_character_optional),
     db: AsyncIOMotorDatabase = Depends(get_database),
     redis: Redis | None = Depends(get_redis),
@@ -89,12 +83,10 @@ async def list_planet_schematics(
     schematics = await sde.list_all_planet_schematics(db)
 
     if not schematics:
-        body = (
-            '<div class="page"><h1>Planetary Industry</h1>'
-            '<p class="empty">No planetary schematics found.</p></div>'
-        )
-        return HTMLResponse(
-            render_page("Planetary Industry", body, _LIST_STYLE, character=character)
+        return templates.TemplateResponse(
+            request,
+            "planetary/list.html",
+            {"character": character, "extra_stylesheets": _LIST_STYLE, "sections": []},
         )
 
     type_ids = _collect_price_type_ids(schematics)
@@ -116,7 +108,7 @@ async def list_planet_schematics(
     }
     raw_material_type_ids = input_type_ids - output_type_ids
 
-    rows: list[_Row] = []
+    rows_by_group_id: dict[int, list[tuple[str, dict[str, object]]]] = {}
     for schematic in schematics:
         schematic_id = schematic["_id"]
         name = str(schematic["name"])
@@ -142,114 +134,73 @@ async def list_planet_schematics(
             for material in inputs
         )
 
-        icon = escape(item_icon_url(output_type_id))
-        output_name = escape(_type_name(output_type_id))
-        schematic_name = escape(name)
-        cycle_minutes = cycle_time_seconds // 60
-        detail_href = escape(f"/planetary/{schematic_id}")
-
-        row_html = f"""
-          <tr>
-            <td>
-              <a class="pi-link" href="{detail_href}">
-                <img class="icon" src="{icon}" alt="{output_name}"
-                  onerror="this.style.visibility='hidden'">
-                <div>{schematic_name}</div>
-              </a>
-            </td>
-            <td>{output_name} &times;{output_quantity}</td>
-            <td class="pi-inputs">{inputs_text}</td>
-            <td>{cycle_minutes} min</td>
-            <td class="num">{format_isk(input_cost)}</td>
-            <td class="num">{format_isk(output_value)}</td>
-            <td class="num">{format_isk(profit)}</td>
-            <td class="num">{format_isk(profit_per_day)}</td>
-          </tr>
-        """
+        row = {
+            "schematic_id": schematic_id,
+            "schematic_name": name,
+            "icon_url": item_icon_url(output_type_id),
+            "output_name": _type_name(output_type_id),
+            "output_quantity": output_quantity,
+            "inputs_text": inputs_text,
+            "cycle_minutes": cycle_time_seconds // 60,
+            "input_cost": format_isk(input_cost),
+            "output_value": format_isk(output_value),
+            "profit": format_isk(profit),
+            "profit_per_day": format_isk(profit_per_day),
+        }
         tier_group_id = cast(dict[str, object] | None, type_docs.get(output_type_id))
         group_id = cast(int | None, tier_group_id.get("group_id")) if tier_group_id else None
-        rows.append(_Row(tier_group_id=group_id, name=name, html=row_html))
+        group_id = group_id if group_id in _TIER_LABELS else _OTHER_GROUP_ID
+        rows_by_group_id.setdefault(group_id, []).append((name, row))
 
-    _OTHER_GROUP_ID = 0
-    rows_by_group_id: dict[int, list[_Row]] = {}
-    for row in rows:
-        group_id = row.tier_group_id if row.tier_group_id in _TIER_LABELS else _OTHER_GROUP_ID
-        rows_by_group_id.setdefault(group_id, []).append(row)
     for tier_rows in rows_by_group_id.values():
-        tier_rows.sort(key=lambda r: r.name.lower())
+        tier_rows.sort(key=lambda entry: entry[0].lower())
 
     section_group_ids = [gid for gid in _TIER_ORDER if gid in rows_by_group_id]
     if _OTHER_GROUP_ID in rows_by_group_id:
         section_group_ids.append(_OTHER_GROUP_ID)
 
-    headers = """
-      <tr>
-        <th>Schematic</th><th>Output</th><th>Inputs</th><th>Cycle</th>
-        <th>Input cost</th><th>Output value</th><th>Profit / cycle</th><th>Profit / day</th>
-      </tr>
-    """
-
-    sections: list[tuple[str, str, str]] = []
+    sections: list[dict[str, Any]] = []
 
     if raw_material_type_ids:
-        raw_rows = sorted(raw_material_type_ids, key=lambda tid: _type_name(tid).lower())
-        raw_rows_html = "".join(f"""
-              <tr>
-                <td>
-                  <div class="pi-link">
-                    <img class="icon" src="{escape(item_icon_url(type_id))}"
-                      alt="{escape(_type_name(type_id))}" onerror="this.style.visibility='hidden'">
-                    <div>{escape(_type_name(type_id))}</div>
-                  </div>
-                </td>
-                <td class="num">{format_isk(_price(type_id))}</td>
-              </tr>
-            """ for type_id in raw_rows)
-        p0_html = f"""
-          <div id="tier-p0">
-            <h2>{escape(_P0_LABEL)}</h2>
-            <table class="pi-table pi-table-narrow">
-              <thead><tr><th>Material</th><th>Price</th></tr></thead>
-              <tbody>{raw_rows_html}</tbody>
-            </table>
-          </div>
-        """
-        sections.append(("tier-p0", _P0_LABEL, p0_html))
+        raw_type_ids = sorted(raw_material_type_ids, key=lambda tid: _type_name(tid).lower())
+        sections.append(
+            {
+                "section_id": "tier-p0",
+                "label": _P0_LABEL,
+                "kind": "p0",
+                "rows": [
+                    {
+                        "icon_url": item_icon_url(type_id),
+                        "name": _type_name(type_id),
+                        "price": format_isk(_price(type_id)),
+                    }
+                    for type_id in raw_type_ids
+                ],
+            }
+        )
 
     for group_id in section_group_ids:
         tier_name = _TIER_LABELS.get(group_id, _OTHER_TIER)
         section_id = "tier-other" if group_id == _OTHER_GROUP_ID else f"tier-{group_id}"
-        tier_html = f"""
-          <div id="{section_id}">
-            <h2>{escape(tier_name)}</h2>
-            <table class="pi-table">
-              <thead>{headers}</thead>
-              <tbody>{"".join(row.html for row in rows_by_group_id[group_id])}</tbody>
-            </table>
-          </div>
-        """
-        sections.append((section_id, tier_name, tier_html))
+        sections.append(
+            {
+                "section_id": section_id,
+                "label": tier_name,
+                "kind": "tier",
+                "rows": [row for _, row in rows_by_group_id[group_id]],
+            }
+        )
 
-    filters_html = "".join(f"""<label>
-          <input type="checkbox" checked onchange="pi_toggle('{section_id}', this.checked)">
-          {escape(label)}
-        </label>""" for section_id, label, _ in sections)
-
-    body = f"""<div class="page">
-      <h1>Planetary Industry</h1>
-      <div class="pi-filters">{filters_html}</div>
-      {"".join(html for _, _, html in sections)}
-      <script>
-        function pi_toggle(id, show) {{
-          document.getElementById(id).style.display = show ? '' : 'none';
-        }}
-      </script>
-    </div>"""
-    return HTMLResponse(render_page("Planetary Industry", body, _LIST_STYLE, character=character))
+    return templates.TemplateResponse(
+        request,
+        "planetary/list.html",
+        {"character": character, "extra_stylesheets": _LIST_STYLE, "sections": sections},
+    )
 
 
 @router.get("/{schematic_id}", response_class=HTMLResponse)
 async def planet_schematic_detail(
+    request: Request,
     schematic_id: int,
     character: CharacterDocument | None = Depends(get_current_character_optional),
     db: AsyncIOMotorDatabase = Depends(get_database),
@@ -286,33 +237,27 @@ async def planet_schematic_detail(
     output_type_id = output["type_id"]
     output_quantity = output["quantity"]
     output_value = output_quantity * market_prices.unit_price(price_by_type_id.get(output_type_id))
-    schematic_name = escape(str(schematic["name"]))
-    output_name = escape(_type_name(output_type_id))
-    icon = escape(item_icon_url(output_type_id))
     cycle_time_seconds = cast(int, schematic["cycle_time_seconds"])
     cycle_minutes = cycle_time_seconds // 60
 
-    header = f"""
-      <div class="header">
-        <img class="icon" src="{icon}" alt="{output_name}" onerror="this.style.visibility='hidden'">
-        <div>
-          <div class="name">{schematic_name}</div>
-          <div class="meta">Produces {output_name} &times;{output_quantity} &middot;
-            {cycle_minutes} min cycle</div>
-        </div>
-      </div>
-    """
+    context: dict[str, Any] = {
+        "character": character,
+        "extra_stylesheets": _DETAIL_STYLE,
+        "page_title": page_title,
+        "icon_url": item_icon_url(output_type_id),
+        "output_name": _type_name(output_type_id),
+        "schematic_name": str(schematic["name"]),
+        "output_quantity": output_quantity,
+        "cycle_minutes": cycle_minutes,
+    }
 
     own_tier = tier_index_by_type_id.get(output_type_id, 0)
+    context["tier_data_available"] = own_tier >= 1
     if own_tier < 1:
-        body = f"""<div class="page">{header}
-          <p class="empty">No tier data available for this schematic.</p>
-          <a class="btn btn-secondary back" href="/planetary">Back to planetary industry</a>
-        </div>"""
-        return HTMLResponse(render_page(page_title, body, _DETAIL_STYLE, character=character))
+        return templates.TemplateResponse(request, "planetary/detail.html", context)
 
-    summary_rows_html = []
-    detail_sections_html = []
+    summary_rows = []
+    detail_sections = []
     for floor in range(own_tier):
         expanded: dict[int, float] = {}
         for material in inputs:
@@ -334,15 +279,15 @@ async def planet_schematic_detail(
         profit_per_day = _profit_per_day(profit, cycle_time_seconds)
         tier_label = f"From P{floor}"
 
-        summary_rows_html.append(f"""
-          <tr>
-            <td>{escape(tier_label)}</td>
-            <td>{format_isk(cost)}</td>
-            <td>{format_isk(output_value)}</td>
-            <td>{format_isk(profit)}</td>
-            <td>{format_isk(profit_per_day)}</td>
-          </tr>
-        """)
+        summary_rows.append(
+            {
+                "tier_label": tier_label,
+                "cost": format_isk(cost),
+                "output_value": format_isk(output_value),
+                "profit": format_isk(profit),
+                "profit_per_day": format_isk(profit_per_day),
+            }
+        )
 
         material_lines = sorted(
             (
@@ -351,41 +296,22 @@ async def planet_schematic_detail(
             ),
             key=lambda line: _type_name(line[0]).lower(),
         )
-        material_rows_html = "".join(f"""
-              <tr>
-                <td>
-                  <div class="material-cell">
-                    <img class="icon" src="{escape(item_icon_url(type_id))}"
-                      alt="{escape(_type_name(type_id))}" onerror="this.style.visibility='hidden'">
-                    <div>{escape(_type_name(type_id))}</div>
-                  </div>
-                </td>
-                <td>{quantity:,.2f}</td>
-                <td>{format_isk(unit_price)}</td>
-                <td>{format_isk(quantity * unit_price)}</td>
-              </tr>
-            """ for type_id, quantity, unit_price in material_lines)
-        detail_sections_html.append(f"""
-          <h2>{escape(tier_label)}</h2>
-          <table>
-            <thead>
-              <tr><th>Material</th><th>Quantity</th><th>Unit price</th><th>Subtotal</th></tr>
-            </thead>
-            <tbody>{material_rows_html}</tbody>
-          </table>
-        """)
+        detail_sections.append(
+            {
+                "tier_label": tier_label,
+                "rows": [
+                    {
+                        "icon_url": item_icon_url(type_id),
+                        "name": _type_name(type_id),
+                        "quantity": f"{quantity:,.2f}",
+                        "unit_price": format_isk(unit_price),
+                        "subtotal": format_isk(quantity * unit_price),
+                    }
+                    for type_id, quantity, unit_price in material_lines
+                ],
+            }
+        )
 
-    body = f"""<div class="page">{header}
-      <table>
-        <thead>
-          <tr>
-            <th>Starting tier</th><th>Material cost</th><th>Output value</th>
-            <th>Profit</th><th>Profit / day</th>
-          </tr>
-        </thead>
-        <tbody>{"".join(summary_rows_html)}</tbody>
-      </table>
-      {"".join(detail_sections_html)}
-      <a class="btn btn-secondary back" href="/planetary">Back to planetary industry</a>
-    </div>"""
-    return HTMLResponse(render_page(page_title, body, _DETAIL_STYLE, character=character))
+    context["summary_rows"] = summary_rows
+    context["detail_sections"] = detail_sections
+    return templates.TemplateResponse(request, "planetary/detail.html", context)

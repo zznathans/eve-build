@@ -1,0 +1,30 @@
+{% if character %}
+<nav class="navbar">
+  <a class="brand" href="/">eve-build</a>
+  <div class="nav-links">
+    <a href="/">Home</a>
+    <a href="/build">Build</a>
+    <a href="/blueprints">Blueprints</a>
+    <a href="/assets">Assets</a>
+    <a href="/pi">Planets</a>
+    <a href="/planetary">PI Schematics</a>
+    <a href="/plans">Plans</a>
+  </div>
+  <div class="nav-user">
+    <img class="nav-avatar" src="https://images.evetech.net/characters/{{ character.character_id }}/portrait?size=64" alt="{{ character.character_name }}">
+    <span class="nav-user-name">{{ character.character_name }}</span>
+    <a class="btn btn-secondary" href="/settings">Settings</a>
+    <a class="btn btn-secondary" href="/auth/logout">Log out</a>
+  </div>
+</nav>
+{% else %}
+<nav class="navbar">
+  <a class="brand" href="/">eve-build</a>
+  <div class="nav-links">
+    <a href="/build">Build</a>
+    <a href="/blueprints/catalog">Blueprint Catalog</a>
+    <a href="/planetary">PI Schematics</a>
+  </div>
+  <a class="btn btn-primary" href="/auth/login">Log in with EVE Online</a>
+</nav>
+{% endif %}

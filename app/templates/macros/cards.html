@@ -1,0 +1,36 @@
+{% macro item_line(label, value) %}
+<div class="item-line"><span>{{ label }}</span><span class="item-value">{{ value | safe }}</span></div>
+{% endmacro %}
+
+{% macro summary_stat(value, label) %}
+<div class="summary-stat">
+  <div class="value">{{ value }}</div>
+  <div class="label">{{ label }}</div>
+</div>
+{% endmacro %}
+
+{% macro section(title, cards) %}
+{% if cards %}
+<div class="section-box">
+  <h2>{{ title }}</h2>
+  <div class="item-grid">{{ cards }}</div>
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro gauge_cell(percentage, value_text=none) %}
+{% set clamped = ([100.0, ([0.0, percentage] | max)] | min) %}
+{% set color = percentage | gauge_color %}
+<div class="mini-gauge">
+  <div class="mini-gauge-track">
+    <div class="mini-gauge-fill" style="width: {{ "%.0f" | format(clamped) }}%; background: {{ color }};"></div>
+  </div>
+  <span class="mini-gauge-text">{{ value_text if value_text is not none else ("%.0f" | format(percentage) ~ "%") }}</span>
+</div>
+{% endmacro %}
+
+{% macro security_status(security_status) %}
+{% set rounded = security_status | round(1) %}
+{% set rounded = 0.0 if rounded == 0 else rounded %}
+<span style="color: {{ rounded | security_status_color }};">{{ "%.1f" | format(rounded) }}</span>
+{% endmacro %}

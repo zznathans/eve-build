@@ -1,9 +1,8 @@
 import re
 from datetime import UTC, datetime
-from html import escape
 from typing import cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from redis.asyncio import Redis
@@ -14,7 +13,8 @@ from app.db.redis import get_redis
 from app.deps import get_current_character
 from app.models.character import CharacterDocument
 from app.services import build_chain, plan, sde
-from app.web import format_isk, item_icon_url, render_page, section_html, summary_stat_html
+from app.templating import templates
+from app.web import format_isk, item_icon_url
 
 router = APIRouter(prefix="/plans", tags=["plans"])
 
@@ -27,27 +27,18 @@ def _format_timestamp(value: datetime) -> str:
     return value.replace(tzinfo=UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
-def _materials_table(materials: list[build_chain.RawMaterial]) -> str:
-    rows = "".join(f"""
-          <tr>
-            <td>
-              <img class="mini-table-icon" src="{escape(item_icon_url(material.type_id))}"
-                alt="" onerror="this.style.visibility='hidden'">
-              {escape(material.name)}
-            </td>
-            <td>{material.quantity}</td>
-            <td>{format_isk(material.quantity * material.unit_price)}</td>
-          </tr>
-        """ for material in materials)
-    return f"""
-      <table class="mini-table">
-        <tbody>{rows}</tbody>
-      </table>
-    """
+def _material_view(material: build_chain.RawMaterial) -> dict[str, object]:
+    return {
+        "icon_url": item_icon_url(material.type_id),
+        "name": material.name,
+        "quantity": material.quantity,
+        "value": format_isk(material.quantity * material.unit_price),
+    }
 
 
 @router.get("", response_class=HTMLResponse)
 async def list_plans(
+    request: Request,
     character: CharacterDocument = Depends(get_current_character),
     db: AsyncIOMotorDatabase = Depends(get_database),
     redis: Redis | None = Depends(get_redis),
@@ -56,11 +47,11 @@ async def list_plans(
     plans = await plan.list_plans(db, character.character_id)
 
     if not plans:
-        body = (
-            '<div class="page"><h1>Plans</h1>'
-            '<p class="empty">No plans saved yet - build something and add it to a plan.</p></div>'
+        return templates.TemplateResponse(
+            request,
+            "plans/list.html",
+            {"character": character, "extra_stylesheets": _LIST_STYLE, "plans": []},
         )
-        return HTMLResponse(render_page("Plans", body, _LIST_STYLE, character=character))
 
     target_type_ids = {
         cast(int, cast(list[dict[str, object]], doc["jobs"])[0]["target_type_id"]) for doc in plans
@@ -70,34 +61,26 @@ async def list_plans(
     def _name(type_id: int) -> str:
         return str(type_docs.get(type_id, {}).get("name", f"Type {type_id}"))
 
-    cards = ""
+    plans_view = []
     for doc in plans:
         jobs = cast(list[dict[str, object]], doc["jobs"])
         first_job_type_id = cast(int, jobs[0]["target_type_id"])
         jobs_text = "1 job" if len(jobs) == 1 else f"{len(jobs)} jobs"
-        cards += f"""
-          <a class="item-card" href="/plans/{doc['_id']}">
-            <div class="item-card-content">
-              <div class="item-title">
-                <img class="item-title-icon"
-                  src="{escape(item_icon_url(first_job_type_id))}"
-                  alt="" onerror="this.style.visibility='hidden'">
-                {escape(_name(first_job_type_id))}
-              </div>
-              <div class="item-line"><span>Jobs</span>
-                <span class="item-value">{jobs_text}</span></div>
-              <div class="item-line"><span>Created</span>
-                <span class="item-value">
-                  {_format_timestamp(cast(datetime, doc["created_at"]))}</span></div>
-            </div>
-          </a>
-        """
+        plans_view.append(
+            {
+                "plan_id": doc["_id"],
+                "icon_url": item_icon_url(first_job_type_id),
+                "name": _name(first_job_type_id),
+                "jobs_text": jobs_text,
+                "created_at": _format_timestamp(cast(datetime, doc["created_at"])),
+            }
+        )
 
-    body = f"""<div class="page">
-      <h1>Plans</h1>
-      <div class="item-grid">{cards}</div>
-    </div>"""
-    return HTMLResponse(render_page("Plans", body, _LIST_STYLE, character=character))
+    return templates.TemplateResponse(
+        request,
+        "plans/list.html",
+        {"character": character, "extra_stylesheets": _LIST_STYLE, "plans": plans_view},
+    )
 
 
 @router.get("/create")
@@ -168,6 +151,7 @@ async def remove_job_from_plan(
 
 @router.get("/{plan_id}", response_class=HTMLResponse)
 async def plan_detail(
+    request: Request,
     plan_id: str,
     character: CharacterDocument = Depends(get_current_character),
     db: AsyncIOMotorDatabase = Depends(get_database),
@@ -191,79 +175,43 @@ async def plan_detail(
         for job in jobs
     ]
 
-    page_title = "Plan - eve-build"
-
-    add_to_plan_href = escape(f"/build/items?plan_id={plan_id}")
-    header = f"""
-      <div class="header">
-        <div>
-          <div class="name">Plan</div>
-          <div class="meta">saved {_format_timestamp(cast(datetime, doc["created_at"]))}</div>
-        </div>
-      </div>
-      <a class="btn btn-primary plan-header-action" href="{add_to_plan_href}">Add to Plan</a>
-    """
-
     total_cost = sum(resolution.raw_material_cost for resolution in resolutions)
     total_value = sum(resolution.output_value for resolution in resolutions)
-    stats = (
-        summary_stat_html(format_isk(total_cost), "Total raw material cost")
-        + summary_stat_html(format_isk(total_value), "Total output value")
-        + summary_stat_html(format_isk(total_value - total_cost), "Total profit")
-        + summary_stat_html(str(len(resolutions)), "Jobs")
-    )
+    stats = {
+        "total_cost": format_isk(total_cost),
+        "total_value": format_isk(total_value),
+        "total_profit": format_isk(total_value - total_cost),
+        "job_count": str(len(resolutions)),
+    }
 
-    job_cards = ""
+    jobs_view = []
     for job, resolution in zip(jobs, resolutions, strict=True):
-        job_id = escape(cast(str, job["job_id"]))
         job_profit = resolution.output_value - resolution.raw_material_cost
-        update_qty_href = escape(f"/plans/{plan_id}/jobs/{job['job_id']}/update")
-        delete_cta = ""
-        if len(jobs) > 1:
-            delete_href = escape(f"/plans/{plan_id}/jobs/{job['job_id']}/delete")
-            delete_cta = f'<a class="btn btn-danger" href="{delete_href}">Remove</a>'
-        job_cards += f"""
-          <div class="item-card">
-            <div class="item-card-content">
-              <div class="item-title">
-                <img class="item-title-icon"
-                  src="{escape(item_icon_url(resolution.target_type_id))}"
-                  alt="" onerror="this.style.visibility='hidden'">
-                {escape(resolution.target_name)}
-              </div>
-              <form method="get" action="{update_qty_href}" class="qty-form">
-                <label for="qty-{job_id}">Desired output</label>
-                <input type="number" id="qty-{job_id}" name="qty"
-                  value="{resolution.target_quantity}" min="1">
-                <button type="submit" class="btn btn-secondary">Update</button>
-                {delete_cta}
-              </form>
-              <div class="item-line"><span>Cost</span>
-                <span class="item-value">{format_isk(resolution.raw_material_cost)}</span></div>
-              <div class="item-line"><span>Profit</span>
-                <span class="item-value">{format_isk(job_profit)}</span></div>
-              {_materials_table(resolution.raw_materials)}
-            </div>
-          </div>
-        """
-    jobs_section = ""
-    if job_cards:
-        jobs_section = f"""
-          <div class="section-box">
-            <h2>Jobs</h2>
-            <div class="item-grid job-grid">{job_cards}</div>
-          </div>
-        """
+        jobs_view.append(
+            {
+                "job_id": job["job_id"],
+                "icon_url": item_icon_url(resolution.target_type_id),
+                "target_name": resolution.target_name,
+                "target_quantity": resolution.target_quantity,
+                "delete_enabled": len(jobs) > 1,
+                "cost": format_isk(resolution.raw_material_cost),
+                "profit": format_isk(job_profit),
+                "materials": [_material_view(m) for m in resolution.raw_materials],
+            }
+        )
 
     combined_materials = build_chain.aggregate_raw_materials(resolutions)
-    materials_section = section_html(
-        "Total Bill of Materials", _materials_table(combined_materials)
-    )
 
-    body = f"""<div class="page">{header}
-      <div class="summary">{stats}</div>
-      {materials_section}
-      {jobs_section}
-      <a class="btn btn-secondary back" href="/plans">Back to plans</a>
-    </div>"""
-    return HTMLResponse(render_page(page_title, body, _DETAIL_STYLE, character=character))
+    return templates.TemplateResponse(
+        request,
+        "plans/detail.html",
+        {
+            "character": character,
+            "extra_stylesheets": _DETAIL_STYLE,
+            "plan_id": plan_id,
+            "created_at": _format_timestamp(cast(datetime, doc["created_at"])),
+            "stats": stats,
+            "jobs": jobs_view,
+            "combined_materials": [_material_view(m) for m in combined_materials],
+        },
+    )

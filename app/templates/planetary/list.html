@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Planetary Industry{% endblock %}
+{% block body %}
+<div class="page">
+  <h1>Planetary Industry</h1>
+  {% if not sections %}
+  <p class="empty">No planetary schematics found.</p>
+  {% else %}
+  <div class="pi-filters">
+    {% for section in sections %}
+    <label>
+      <input type="checkbox" checked onchange="pi_toggle('{{ section.section_id }}', this.checked)">
+      {{ section.label }}
+    </label>
+    {% endfor %}
+  </div>
+
+  {% for section in sections %}
+  <div id="{{ section.section_id }}">
+    <h2>{{ section.label }}</h2>
+    {% if section.kind == "p0" %}
+    <table class="pi-table pi-table-narrow">
+      <thead><tr><th>Material</th><th>Price</th></tr></thead>
+      <tbody>
+        {% for row in section.rows %}
+        <tr>
+          <td>
+            <div class="pi-link">
+              <img class="icon" src="{{ row.icon_url }}" alt="{{ row.name }}"
+                onerror="this.style.visibility='hidden'">
+              <div>{{ row.name }}</div>
+            </div>
+          </td>
+          <td class="num">{{ row.price }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <table class="pi-table">
+      <thead>
+        <tr>
+          <th>Schematic</th><th>Output</th><th>Inputs</th><th>Cycle</th>
+          <th>Input cost</th><th>Output value</th><th>Profit / cycle</th><th>Profit / day</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in section.rows %}
+        <tr>
+          <td>
+            <a class="pi-link" href="/planetary/{{ row.schematic_id }}">
+              <img class="icon" src="{{ row.icon_url }}" alt="{{ row.output_name }}"
+                onerror="this.style.visibility='hidden'">
+              <div>{{ row.schematic_name }}</div>
+            </a>
+          </td>
+          <td>{{ row.output_name }} &times;{{ row.output_quantity }}</td>
+          <td class="pi-inputs">{{ row.inputs_text | safe }}</td>
+          <td>{{ row.cycle_minutes }} min</td>
+          <td class="num">{{ row.input_cost }}</td>
+          <td class="num">{{ row.output_value }}</td>
+          <td class="num">{{ row.profit }}</td>
+          <td class="num">{{ row.profit_per_day }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+  {% endfor %}
+  <script>
+    function pi_toggle(id, show) {
+      document.getElementById(id).style.display = show ? '' : 'none';
+    }
+  </script>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% from "macros/cards.html" import item_line, summary_stat %}
+{% block title %}{{ name }} - eve-build{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="header">
+    <img class="icon" src="{{ icon_url }}" alt="{{ name }}" onerror="this.style.visibility='hidden'">
+    <div>
+      <div class="name">{{ name }}</div>
+      <div class="meta">{{ unit_volume }} m3 / unit</div>
+    </div>
+  </div>
+
+  <h2>Market data</h2>
+  <div class="summary">
+    {{ summary_stat(market.average_price, "Average price") }}
+    {{ summary_stat(market.adjusted_price, "Adjusted price") }}
+  </div>
+
+  <h2>What you own</h2>
+  <div class="summary">
+    {{ summary_stat(owned.total_quantity, "Total quantity") }}
+    {{ summary_stat(owned.total_volume, "Total volume") }}
+    {{ summary_stat(owned.total_value, "Est. total value") }}
+  </div>
+
+  {% if location_cards %}
+  <div class="section-box">
+    <h2>Locations</h2>
+    <div class="item-grid">
+      {% for card in location_cards %}
+      <a class="item-card" href="/assets/locations/{{ card.location_id }}">
+        <div class="item-card-content">
+          <div class="item-title"><span>{{ card.location_label | safe }}</span></div>
+          {{ item_line("Quantity", card.quantity) }}
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  <a class="btn btn-secondary back" href="/assets">Back to assets</a>
+</div>
+{% endblock %}

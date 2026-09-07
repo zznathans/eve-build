@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}eve-build{% endblock %}
+{% block body %}
+<div class="login-wrap">
+  <div class="card">
+    <h1>eve-build</h1>
+    <p class="tagline">
+      Imports your EVE Online characters' blueprints, assets, and industry jobs, so you
+      can see what's buildable, what it's worth, and what's in production.
+    </p>
+    <ul class="feature-list">
+      <li>Blueprint material/time efficiency and buildable-run counts, on-site and
+        across all assets</li>
+      <li>Assets by category - minerals, ore, PI materials, datacores, decryptors -
+        with volume and ISK value</li>
+      <li>Live market pricing</li>
+      <li>Industry job status and progress</li>
+    </ul>
+    <form method="get" action="/auth/login">
+      <button class="btn btn-primary" type="submit">Log in with EVE Online</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
