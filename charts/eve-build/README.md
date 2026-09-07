@@ -97,8 +97,7 @@ table.
 | eveBuild.ingress.tls.secretName | string | `""` | Name of the Secret holding the TLS certificate. When using cert-manager, this is the Secret it creates/manages - pick any name. |
 | eveBuild.marketPrices.existingSecret | string | `""` | Name of an existing Secret holding the refresh API key, used instead of `refreshApiKey` when set. |
 | eveBuild.marketPrices.existingSecretKey | string | `"apiKey"` | Key within `existingSecret` holding the refresh API key. |
-| eveBuild.marketPrices.refreshApiKey | string | `""` | Shared secret the `/market-prices/refresh` endpoint requires via the `X-Api-Key` header, used by the CronJob below to trigger a poll. Required unless `existingSecret` is set - generate one with `openssl rand -hex 32`. |
-| eveBuild.marketPrices.schedule | string | `"0 * * * *"` | Cron schedule the CronJob uses to trigger a market price refresh. |
+| eveBuild.marketPrices.refreshApiKey | string | `""` | Shared secret the on-demand `/market-prices/refresh` endpoint requires via the `X-Api-Key` header. Prices also refresh automatically every hour as part of the market_orders dispatch run (when rabbitmq.enabled) - this endpoint is only for triggering an out-of-cycle refresh manually. Required unless `existingSecret` is set - generate one with `openssl rand -hex 32`. |
 | eveBuild.metrics.enabled | bool | `false` | Expose Prometheus-compatible metrics at GET /metrics. |
 | eveBuild.metrics.serviceMonitor.enabled | bool | `false` | Deploy a ServiceMonitor for Prometheus Operator to scrape /metrics automatically. Requires the Prometheus Operator CRDs already installed in the cluster, and `eveBuild.metrics.enabled: true`. |
 | eveBuild.metrics.serviceMonitor.interval | string | `"30s"` | Scrape interval. |

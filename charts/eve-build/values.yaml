@@ -126,25 +126,26 @@ eveBuild:
     maxAgeSeconds: 1209600
 
   marketPrices:
-    # -- Shared secret the `/market-prices/refresh` endpoint requires via the
-    # `X-Api-Key` header, used by the CronJob below to trigger a poll.
-    # Required unless `existingSecret` is set - generate one with `openssl
-    # rand -hex 32`.
+    # -- Shared secret the on-demand `/market-prices/refresh` endpoint requires via the
+    # `X-Api-Key` header. Prices also refresh automatically every hour as part of the
+    # market_orders dispatch run below (when rabbitmq.enabled) - this endpoint is only for
+    # triggering an out-of-cycle refresh manually. Required unless `existingSecret` is set -
+    # generate one with `openssl rand -hex 32`.
     refreshApiKey: ""
     # -- Name of an existing Secret holding the refresh API key, used
     # instead of `refreshApiKey` when set.
     existingSecret: ""
     # -- Key within `existingSecret` holding the refresh API key.
     existingSecretKey: "apiKey"
-    # -- Cron schedule the CronJob uses to trigger a market price refresh.
-    schedule: "0 * * * *"
 
   marketOrders:
     # -- Only rendered when rabbitmq.enabled is true - the dispatch CronJob and fetch/write
     # worker Deployments below all publish/consume via RabbitMQ, so there's nothing to deploy
     # without it. See docs for the full market-orders scrape pipeline.
     #
-    # Cron schedule the dispatch CronJob uses to enqueue a scrape job for every public region.
+    # Cron schedule the dispatch CronJob uses to enqueue a scrape job for every public region,
+    # plus one market-price refresh job (see eveBuild.marketPrices above) - one coordinated
+    # "update the market" batch per run.
     dispatchSchedule: "0 * * * *"
     # -- Shared KEDA settings for both worker ScaledObjects below. Only used when
     # `keda.enabled` is true - see the top-level `keda` section.
@@ -371,6 +372,16 @@ mongodb:
     # --collector.topmetrics or --collector.indexstats - the dedicated clusterMonitor user (or
     # your own external one) needs the matching privileges.
     extraArgs: []
+    # -- Annotations on the mongodb-exporter pod. Defaults to the classic prometheus.io/scrape
+    # annotation convention (unlike eveBuild.podAnnotations, which defaults empty) as a
+    # fallback scrape path alongside the ServiceMonitor below - if the cluster's Prometheus
+    # isn't running the Prometheus Operator (or nothing is configured to watch ServiceMonitor
+    # CRDs), the ServiceMonitor alone silently scrapes nothing. Harmless to leave on even when
+    # the ServiceMonitor path does work.
+    podAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9216"
+      prometheus.io/path: /metrics
     # -- Resource requests and limits for the mongodb-exporter container.
     resources:
       requests:

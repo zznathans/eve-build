@@ -39,14 +39,17 @@ async def test_dispatch_scrape_enqueues_one_job_per_region() -> None:
 
     scrape_run_id = await market_orders.dispatch_scrape(settings, publisher)
 
-    assert len(publisher.messages) == 2
-    jobs = [
-        rabbitmq.decode_scrape_job(body)
+    assert len(publisher.messages) == 3
+    decoded = [
+        rabbitmq.decode_job(body)
         for queue_name, body in publisher.messages
         if queue_name == rabbitmq.MARKET_ORDERS_SCRAPE_JOBS_QUEUE
     ]
-    assert {job.region_id for job in jobs} == {10000002, 10000043}
-    assert all(job.scrape_run_id == scrape_run_id for job in jobs)
+    region_jobs = [job for job in decoded if isinstance(job, rabbitmq.ScrapeJobMessage)]
+    price_jobs = [job for job in decoded if isinstance(job, rabbitmq.PriceRefreshJobMessage)]
+    assert {job.region_id for job in region_jobs} == {10000002, 10000043}
+    assert len(price_jobs) == 1
+    assert all(job.scrape_run_id == scrape_run_id for job in decoded)
 
 
 @respx.mock

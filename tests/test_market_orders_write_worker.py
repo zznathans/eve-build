@@ -89,7 +89,7 @@ async def test_main_closes_mongo_client_when_message_handling_fails(
     monkeypatch.setattr(
         write_worker_module, "declare_market_order_queues", _fake_declare_market_order_queues
     )
-    monkeypatch.setattr(write_worker_module, "decode_orders_chunk", lambda body: body)
+    monkeypatch.setattr(write_worker_module, "decode_result", lambda body: body)
 
     async def _boom(db: object, message: object) -> Any:
         raise RuntimeError("boom")
@@ -99,6 +99,54 @@ async def test_main_closes_mongo_client_when_message_handling_fails(
     with pytest.raises(RuntimeError, match="boom"):
         await write_worker_module.main()
 
+    assert fake_client.closed is True
+
+    get_settings.cache_clear()
+
+
+async def test_main_applies_price_refresh_for_a_price_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RABBITMQ_ENABLED", "true")
+    get_settings.cache_clear()
+
+    fake_client = _FakeMongoClient()
+    monkeypatch.setattr(write_worker_module, "create_mongo_client", lambda settings: fake_client)
+
+    async def _fake_create_rabbitmq_connection(settings: object) -> _FakeConnection:
+        return _FakeConnection()
+
+    monkeypatch.setattr(
+        write_worker_module, "create_rabbitmq_connection", _fake_create_rabbitmq_connection
+    )
+
+    fake_queue = _FakeResultsQueue([_FakeMessage(b"irrelevant")])
+
+    async def _fake_declare_market_order_queues(channel: object) -> tuple[None, _FakeResultsQueue]:
+        return None, fake_queue
+
+    monkeypatch.setattr(
+        write_worker_module, "declare_market_order_queues", _fake_declare_market_order_queues
+    )
+
+    price_result = write_worker_module.PriceRefreshResultMessage(scrape_run_id="run-1", prices=[])
+    monkeypatch.setattr(write_worker_module, "decode_result", lambda body: price_result)
+
+    calls: list[object] = []
+
+    async def _fake_apply_price_refresh(db: object, result: object) -> int:
+        calls.append(result)
+        return 0
+
+    async def _unexpected_apply_orders_chunk(db: object, message: object) -> int:
+        raise AssertionError("apply_orders_chunk should not run for a price-refresh result")
+
+    monkeypatch.setattr(write_worker_module, "apply_price_refresh", _fake_apply_price_refresh)
+    monkeypatch.setattr(write_worker_module, "apply_orders_chunk", _unexpected_apply_orders_chunk)
+
+    await write_worker_module.main()
+
+    assert calls == [price_result]
     assert fake_client.closed is True
 
     get_settings.cache_clear()

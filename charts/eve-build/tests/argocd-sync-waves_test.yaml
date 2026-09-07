@@ -4,7 +4,6 @@ templates:
   - service.yaml
   - session-secret.yaml
   - market-prices-secret.yaml
-  - market-prices-cronjob.yaml
   - service-account.yaml
   - redis.yaml
   - mongodb.yaml
@@ -58,10 +57,6 @@ tests:
 
   - it: syncs cronjobs and market-orders workers after the app (wave 1)
     asserts:
-      - equal:
-          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
-          value: "1"
-        template: market-prices-cronjob.yaml
       - equal:
           path: metadata.annotations["argocd.argoproj.io/sync-wave"]
           value: "1"
