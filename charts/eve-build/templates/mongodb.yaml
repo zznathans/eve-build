@@ -20,6 +20,22 @@ data:
   password: {{ if $existing }}{{ index $existing.data "password" }}{{ else }}{{ randAlphaNum 32 | b64enc }}{{ end }}
 ---
 {{- end }}
+{{- if .Values.mongodb.exporter.enabled }}
+{{- $exporterSecretName := printf "%s-mongodb-exporter-password" .Release.Name }}
+{{- $exporterExisting := lookup "v1" "Secret" .Release.Namespace $exporterSecretName }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $exporterSecretName }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+type: Opaque
+data:
+  # Same generate-once-then-reuse approach as the app's own password Secret above.
+  password: {{ if $exporterExisting }}{{ index $exporterExisting.data "password" }}{{ else }}{{ randAlphaNum 32 | b64enc }}{{ end }}
+---
+{{- end }}
 apiVersion: mongodbcommunity.mongodb.com/v1
 kind: MongoDBCommunity
 metadata:
@@ -44,6 +60,21 @@ spec:
           db: {{ .Values.mongodb.database }}
       scramCredentialsSecretName: {{ .Release.Name }}-mongodb-scram
       connectionStringSecretName: {{ .Release.Name }}-mongodb-connection
+    {{- if .Values.mongodb.exporter.enabled }}
+    - name: {{ .Values.mongodb.exporter.username }}
+      db: admin
+      passwordSecretRef:
+        name: {{ .Release.Name }}-mongodb-exporter-password
+      roles:
+        # clusterMonitor is the built-in role mongodb_exporter's diagnosticdata/dbstats/
+        # topmetrics/indexstats collectors need (serverStatus, replSetGetStatus, dbStats,
+        # etc.) - narrower than the app's own readWrite-on-one-database user, and it can't
+        # read or write application data.
+        - name: clusterMonitor
+          db: admin
+      scramCredentialsSecretName: {{ .Release.Name }}-mongodb-exporter-scram
+      connectionStringSecretName: {{ .Release.Name }}-mongodb-exporter-connection
+    {{- end }}
   statefulSet:
     spec:
       template:
