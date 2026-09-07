@@ -124,10 +124,13 @@ async def update_job_quantity(
 ) -> RedirectResponse:
     if not _PLAN_ID_RE.fullmatch(plan_id):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
-    updated = await plan.update_job_quantity(db, plan_id, character.character_id, job_id, qty)
+    if not _PLAN_ID_RE.fullmatch(job_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid job id")
+    safe_plan_id = plan_id
+    updated = await plan.update_job_quantity(db, safe_plan_id, character.character_id, job_id, qty)
     if not updated:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan or job not found")
-    return RedirectResponse(f"/plans/{plan_id}")
+    return RedirectResponse(f"/plans/{safe_plan_id}")
 
 
 @router.get("/{plan_id}/jobs/{job_id}/delete")
