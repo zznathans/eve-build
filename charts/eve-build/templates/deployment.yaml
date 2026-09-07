@@ -7,7 +7,9 @@ metadata:
     argocd.argoproj.io/sync-wave: "0"
 spec:
   revisionHistoryLimit: 3
+  {{- if not .Values.eveBuild.autoscaling.enabled }}
   replicas: {{ .Values.eveBuild.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       app: {{ .Release.Name }}

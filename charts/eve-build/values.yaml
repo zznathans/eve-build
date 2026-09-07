@@ -1,7 +1,30 @@
 eveBuild:
   # -- Number of pod replicas. The app is stateless, so this is safe to scale
-  # up freely.
+  # up freely. Ignored (and no `replicas` field rendered on the Deployment) when
+  # `autoscaling.enabled` is true - the HorizontalPodAutoscaler owns replica count instead.
   replicaCount: 1
+
+  autoscaling:
+    # -- Deploy a HorizontalPodAutoscaler for the app Deployment. Requires the
+    # metrics-server (or equivalent resource-metrics API) already installed in the cluster -
+    # this chart only creates the HPA, not a metrics source for it to read from.
+    enabled: false
+    # -- Minimum replicas the HPA will scale down to.
+    minReplicas: 1
+    # -- Maximum replicas the HPA will scale up to.
+    maxReplicas: 5
+    # -- Target average CPU utilization, as a percentage of the app container's CPU request
+    # (see `resources.requests.cpu` below). Set to 0/null to omit this metric entirely (e.g.
+    # to scale on memory alone).
+    targetCPUUtilizationPercentage: 75
+    # -- Target average memory utilization, as a percentage of the app container's memory
+    # request. Set to 0/null to omit this metric entirely (e.g. to scale on CPU alone) - the
+    # app's per-request memory footprint is fairly flat, so CPU alone is a reasonable default.
+    targetMemoryUtilizationPercentage: 0
+    # -- Raw `behavior` block (scale-up/scale-down policies, stabilization windows) passed
+    # through as-is - see the HorizontalPodAutoscaler API docs. Leave empty for Kubernetes'
+    # own defaults.
+    behavior: {}
 
   # -- Container image registry and repository for the eve-build image.
   imageRepository: ghcr.io/zznathans/eve-build
