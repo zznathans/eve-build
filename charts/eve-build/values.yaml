@@ -338,10 +338,15 @@ mongodb:
     existingSecret: ""
     # -- Key within `existingSecret` holding the connection string.
     existingSecretKey: "uri"
+    # -- Pass --compatible-mode, which also exposes the old (v1-style) metric names/labels
+    # alongside the current ones, so dashboards built against the older exporter (e.g.
+    # Percona's own Grafana dashboards) keep working unmodified.
+    compatibleMode: true
     # -- Extra command-line flags appended after the collector flags this chart always passes
     # (--mongodb.global-conn-pool, --no-mongodb.direct-connect, --collector.diagnosticdata,
-    # --collector.dbstats). E.g. add --collector.topmetrics or --collector.indexstats - the
-    # dedicated clusterMonitor user (or your own external one) needs the matching privileges.
+    # --collector.dbstats, and --compatible-mode if `compatibleMode` is true). E.g. add
+    # --collector.topmetrics or --collector.indexstats - the dedicated clusterMonitor user (or
+    # your own external one) needs the matching privileges.
     extraArgs: []
     # -- Resource requests and limits for the mongodb-exporter container.
     resources:
