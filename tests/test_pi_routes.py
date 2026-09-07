@@ -205,6 +205,8 @@ async def test_pi_list_shows_colony_and_extraction_status(
     assert "Jita" in response.text
     assert "Extracting" in response.text
     assert f'href="/pi/{PLANET_ID}"' in response.text
+    assert "Last synced" in response.text
+    assert "2026-01-01 00:00 UTC" in response.text
 
 
 @respx.mock
@@ -246,6 +248,8 @@ async def test_pi_detail_shows_extractor_factory_storage(
     assert "Storage" in response.text
     assert "Links" not in response.text
     assert "Routes" not in response.text
+    assert "Last synced 2026-01-01 00:00 UTC" in response.text
+    assert "viewed in-game" in response.text
 
 
 @respx.mock

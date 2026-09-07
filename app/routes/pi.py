@@ -69,6 +69,14 @@ def _parse_esi_time(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
+def _format_synced_at(value: str) -> str:
+    """CCP only recalculates a colony's pins (including storage contents) when the
+    colony is viewed in the EVE client - ESI won't show newer data than this
+    regardless of how often eve-build polls it, so this timestamp (not "now") is
+    the honest answer to "how fresh is this"."""
+    return _parse_esi_time(value).strftime("%Y-%m-%d %H:%M UTC")
+
+
 async def _get_colonies_or_none(
     db: AsyncIOMotorDatabase,
     redis: Redis | None,
@@ -210,6 +218,7 @@ async def list_colonies(
               {item_line_html("Factories", str(factory_count))}
               {item_line_html("Storage", str(storage_count))}
               {item_line_html("Status", status_html)}
+              {item_line_html("Last synced", escape(_format_synced_at(colony.last_update)))}
             </div>
           </a>
         """)
@@ -467,7 +476,8 @@ async def colony_detail(
         <div>
           <div class="name">{planet_name}</div>
           <div class="meta">{type_label} &middot; {system_name} &middot;
-            Upgrade level {colony.upgrade_level} &middot; {colony.num_pins} pins</div>
+            Upgrade level {colony.upgrade_level} &middot; {colony.num_pins} pins &middot;
+            Last synced {escape(_format_synced_at(colony.last_update))}</div>
         </div>
       </div>
     """
@@ -530,12 +540,24 @@ async def colony_detail(
       {f'<div class="summary">{flow_stats_html}</div>' if flow_stats_html else ""}
     """
 
+    storage_section_html = ""
+    if storage_cards:
+        storage_section_html = f"""
+          <div class="section-box">
+            <h2>Storage</h2>
+            <div class="sync-notice">Storage contents reflect the last time this colony was
+              viewed in-game (synced {escape(_format_synced_at(colony.last_update))}) &mdash;
+              open it in the EVE client to refresh this data.</div>
+            <div class="item-grid">{"".join(storage_cards)}</div>
+          </div>
+        """
+
     body = f"""<div class="page">{header}
       {summary_html}
       <div class="section-grid">
         {_section("Extractors", "".join(extractor_cards))}
         {_grouped_section("Factories", factory_cards_by_type)}
-        {_section("Storage", "".join(storage_cards))}
+        {storage_section_html}
       </div>
       <a class="btn btn-secondary back" href="/pi">Back to Planets</a>
     </div>"""
