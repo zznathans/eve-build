@@ -16,6 +16,10 @@ spec:
     metadata:
       labels:
         app: {{ .Release.Name }}-redis
+      annotations:
+        prometheus.io/path: /metric
+        prometheus.io/port: 9121
+        prometheus.io/scrape: true
     spec:
       containers:
         - name: redis
