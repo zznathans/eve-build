@@ -31,7 +31,6 @@ spec:
             # here (the bundled MongoDBCommunity connection string lists every member, and
             # externalSecret assembles a mongodb+srv:// URI for DigitalOcean Managed MongoDB)
             # - so direct-connect must stay off or the exporter fails to connect at all.
-            - --no-mongodb.direct-connect
             - --collect-all
             {{- if .Values.mongodb.exporter.compatibleMode }}
             # Also expose the old (v1-style) metric names/labels alongside the current ones,
