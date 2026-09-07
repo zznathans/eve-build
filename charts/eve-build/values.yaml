@@ -314,6 +314,54 @@ mongodb:
     # -- How often the ExternalSecret refreshes from the store.
     refreshInterval: 1h
 
+  exporter:
+    # -- Deploy a standalone mongodb_exporter (https://github.com/percona/mongodb_exporter)
+    # Deployment, exposing Prometheus-compatible metrics at :9216/metrics. Unlike
+    # `redis.exporter` (a sidecar, since bundled Redis is the only supported mode), this
+    # works regardless of which MongoDB mode is active - bundled (`mongodb.enabled`),
+    # `externalSecret`, `existingSecret`, or a plain `uri`. When `mongodb.enabled` is true,
+    # mongodb.yaml also creates a dedicated clusterMonitor-scoped user for it (see
+    # `username` below) rather than reusing the app's own readWrite-on-one-database user,
+    # which lacks the privileges most collectors need.
+    enabled: false
+    # -- mongodb_exporter image tag to run.
+    version: "0.40"
+    # -- Username for the dedicated clusterMonitor-role user mongodb.yaml creates for the
+    # exporter. Only applies when `mongodb.enabled` is true - there's no user to create when
+    # MongoDB is external/managed, see `existingSecret` below for that case instead.
+    username: eve-build-exporter
+    # -- Name of an existing Secret holding a MongoDB connection string for a
+    # monitoring-scoped user, used when `mongodb.enabled` is false - e.g. a clusterMonitor
+    # user you created yourself on an external/managed MongoDB. Falls back to the app's own
+    # MONGODB_URI (reduced metrics coverage) when unset. Ignored when `mongodb.enabled` is
+    # true (the dedicated in-chart user's connection string is used instead).
+    existingSecret: ""
+    # -- Key within `existingSecret` holding the connection string.
+    existingSecretKey: "uri"
+    # -- Extra command-line flags appended after the collector flags this chart always
+    # passes (--mongodb.global-conn-pool, --collector.diagnosticdata, --collector.dbstats).
+    # E.g. add --collector.topmetrics or --collector.indexstats - the dedicated
+    # clusterMonitor user (or your own external one) needs the matching privileges.
+    extraArgs: []
+    # -- Resource requests and limits for the mongodb-exporter container.
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+    serviceMonitor:
+      # -- Deploy a ServiceMonitor for Prometheus Operator to scrape the exporter
+      # automatically. Requires the Prometheus Operator CRDs already installed in the
+      # cluster, and `mongodb.exporter.enabled`.
+      enabled: false
+      # -- Scrape interval.
+      interval: 30s
+      # -- Extra labels on the ServiceMonitor (e.g. for a Prometheus instance's
+      # serviceMonitorSelector).
+      labels: {}
+
 redis:
   # -- Deploy a Redis instance for this release. The app uses it as an
   # optional read-through cache for reference data (SDE type/blueprint

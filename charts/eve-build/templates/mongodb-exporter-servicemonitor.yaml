@@ -1,0 +1,22 @@
+{{- if and .Values.mongodb.exporter.enabled .Values.mongodb.exporter.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}-mongodb-exporter
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Release.Name }}-mongodb-exporter
+    {{- with .Values.mongodb.exporter.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-mongodb-exporter
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ .Values.mongodb.exporter.serviceMonitor.interval }}
+{{- end }}
