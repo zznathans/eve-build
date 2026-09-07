@@ -16,14 +16,21 @@ Publish = Callable[[str, bytes], Awaitable[None]]
 
 
 async def dispatch_scrape(settings: Settings, publish: Publish) -> str:
-    """Enqueues one scrape job per public region under a fresh scrape_run_id. Returns the
-    scrape_run_id so callers (e.g. the CLI entrypoint) can log it."""
+    """Enqueues one scrape job per public region, plus one price-refresh job (see
+    market_prices.run_price_refresh_job), all under a fresh scrape_run_id - one coordinated
+    "update the market" batch per dispatch run. Returns the scrape_run_id so callers (e.g. the
+    CLI entrypoint) can log it."""
     scrape_run_id = str(uuid.uuid4())
     region_ids = await esi.get_region_ids(settings)
 
     for region_id in region_ids:
         message = rabbitmq.ScrapeJobMessage(region_id=region_id, scrape_run_id=scrape_run_id)
         await publish(rabbitmq.MARKET_ORDERS_SCRAPE_JOBS_QUEUE, rabbitmq.encode_scrape_job(message))
+
+    price_job = rabbitmq.PriceRefreshJobMessage(scrape_run_id=scrape_run_id)
+    await publish(
+        rabbitmq.MARKET_ORDERS_SCRAPE_JOBS_QUEUE, rabbitmq.encode_price_refresh_job(price_job)
+    )
 
     return scrape_run_id
 

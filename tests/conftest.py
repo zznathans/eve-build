@@ -17,16 +17,41 @@ from app.main import app
 TEST_KEY_ID = "test-key-1"
 
 
+class _FakeExchange:
+    def __init__(self, connection: "FakeRabbitMQConnection") -> None:
+        self._connection = connection
+
+    async def publish(self, message: object, routing_key: str) -> None:
+        body = getattr(message, "body", message)
+        self._connection.published.append((routing_key, body))
+
+
+class _FakeChannel:
+    def __init__(self, connection: "FakeRabbitMQConnection") -> None:
+        self._connection = connection
+        self.default_exchange = _FakeExchange(connection)
+
+    async def declare_queue(self, name: str, durable: bool = True) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
+
+
 class FakeRabbitMQConnection:
-    """Minimal stand-in for aio_pika's AbstractRobustConnection, sufficient for
-    dependency-override purposes until there's real publisher/consumer code to
-    exercise a deeper fake against."""
+    """Minimal stand-in for aio_pika's AbstractRobustConnection - enough to exercise route/
+    dispatch code that opens a channel and publishes, without a real broker. `published`
+    records every (routing_key, body) pair passed to `channel.default_exchange.publish`."""
 
     def __init__(self) -> None:
         self.closed = False
+        self.published: list[tuple[str, bytes]] = []
 
     async def close(self) -> None:
         self.closed = True
+
+    async def channel(self) -> _FakeChannel:
+        return _FakeChannel(self)
 
 
 @pytest.fixture

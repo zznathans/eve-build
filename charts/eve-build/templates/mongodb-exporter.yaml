@@ -16,6 +16,10 @@ spec:
     metadata:
       labels:
         app: {{ .Release.Name }}-mongodb-exporter
+      {{- with .Values.mongodb.exporter.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
       containers:
         - name: mongodb-exporter
