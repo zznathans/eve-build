@@ -1,0 +1,35 @@
+suite: dashboard-configmap
+templates:
+  - dashboard-configmap.yaml
+tests:
+  - it: renders nothing by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders a ConfigMap when enabled
+    set:
+      eveBuild.metrics.dashboard.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.labels.grafana_dashboard
+          value: "1"
+      - equal:
+          path: metadata.annotations["k8s-sidecar-target-directory"]
+          value: /tmp/dashboards/eve-build
+      - matchRegex:
+          path: data["eve-build.json"]
+          pattern: '"title": "eve-build"'
+
+  - it: uses the configured folder
+    set:
+      eveBuild.metrics.dashboard.enabled: true
+      eveBuild.metrics.dashboard.folder: Custom
+    asserts:
+      - equal:
+          path: metadata.annotations["k8s-sidecar-target-directory"]
+          value: /tmp/dashboards/Custom

@@ -249,6 +249,18 @@ eveBuild:
       # -- Extra labels on the ServiceMonitor, e.g. for a Prometheus
       # instance's serviceMonitorSelector.
       labels: {}
+    dashboard:
+      # -- Ship a Grafana dashboard (charts/eve-build/files/dashboards/eve-build.json) as a
+      # ConfigMap labeled `grafana_dashboard: "1"`, picked up automatically by a
+      # grafana-sidecar (https://github.com/kiwigrid/k8s-sidecar) watching for that label -
+      # the same mechanism most kube-prometheus-stack/Grafana Helm installs use. Requires such
+      # a sidecar already running against this namespace (its `searchNamespace` must include
+      # this release's namespace, or be "ALL" - by default many installs only watch Grafana's
+      # own namespace).
+      enabled: false
+      # -- Folder (relative to the sidecar's dashboard mount) this dashboard is placed into,
+      # via the `k8s-sidecar-target-directory` annotation.
+      folder: "eve-build"
 
   # -- Raw Kubernetes objects to render alongside chart-managed resources.
   extraObjects: []

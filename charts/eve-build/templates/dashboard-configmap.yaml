@@ -1,0 +1,15 @@
+{{- if .Values.eveBuild.metrics.dashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-dashboard
+  namespace: {{ .Release.Namespace }}
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    k8s-sidecar-target-directory: {{ printf "/tmp/dashboards/%s" .Values.eveBuild.metrics.dashboard.folder | quote }}
+    argocd.argoproj.io/sync-wave: "0"
+data:
+  eve-build.json: |
+{{ .Files.Get "files/dashboards/eve-build.json" | indent 4 }}
+{{- end }}
