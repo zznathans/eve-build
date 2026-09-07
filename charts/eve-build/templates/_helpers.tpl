@@ -16,28 +16,11 @@ Key within the RabbitMQ connection Secret holding the AMQP URL.
 {{- end -}}
 
 {{/*
-Shared container env vars for every eve-build workload (the app Deployment, plus the
-market-orders dispatch CronJob and fetch/write worker Deployments) - they all need the same
-Mongo/Redis/RabbitMQ/ESI/SSO configuration. Renders a list of EnvVar entries at zero indentation;
-callers should `{{- include "eve-build.env" . | nindent 12 }}` under their container's `env:` key.
+The MONGODB_URI EnvVar entry for the app/workers, resolved the same way regardless of which
+of the four supported modes is active (in-chart MongoDBCommunity, externalSecret,
+existingSecret, or a plain `uri` value). Renders a single EnvVar entry at zero indentation.
 */}}
-{{- define "eve-build.env" -}}
-{{- $redisEnabled := or .Values.redis.enabled (ne .Values.redis.url "") }}
-{{- $redisUrl := .Values.redis.enabled | ternary (printf "redis://%s-redis:6379/0" .Release.Name) .Values.redis.url }}
-{{- $sessionSecretName := .Values.eveBuild.session.existingSecret | default (printf "%s-session" .Release.Name) }}
-{{- $sessionSecretKey := (ne .Values.eveBuild.session.existingSecret "") | ternary .Values.eveBuild.session.existingSecretKey "secretKey" }}
-{{- $marketPricesSecretName := .Values.eveBuild.marketPrices.existingSecret | default (printf "%s-market-prices" .Release.Name) }}
-{{- $marketPricesSecretKey := (ne .Values.eveBuild.marketPrices.existingSecret "") | ternary .Values.eveBuild.marketPrices.existingSecretKey "apiKey" -}}
-{{- if and .Values.mongodb.externalSecret.enabled (not .Values.mongodb.enabled) }}
-- name: MONGODB_DATABASE
-  valueFrom:
-    secretKeyRef:
-      name: {{ .Release.Name }}-mongodb-external
-      key: dbName
-{{- else }}
-- name: MONGODB_DATABASE
-  value: {{ .Values.mongodb.database | quote }}
-{{- end }}
+{{- define "eve-build.mongodbUriEnv" -}}
 {{- if .Values.mongodb.enabled }}
 - name: MONGODB_URI
   valueFrom:
@@ -60,6 +43,61 @@ callers should `{{- include "eve-build.env" . | nindent 12 }}` under their conta
 - name: MONGODB_URI
   value: {{ .Values.mongodb.uri | quote }}
 {{- end }}
+{{- end -}}
+
+{{/*
+The MONGODB_URI EnvVar entry for the mongodb-exporter Deployment. When MongoDB is bundled
+(`mongodb.enabled`), this points at the dedicated clusterMonitor-scoped user mongodb.yaml
+creates for the exporter (see its "exporter.enabled" user block) - not the app's own
+readWrite-on-one-database user, which lacks the privileges most collectors need. There's no
+such dedicated user available when MongoDB is external/managed (this chart doesn't administer
+it), so `mongodb.exporter.existingSecret` lets you point at a monitoring-scoped credential you
+created there yourself; failing that, it falls back to `eve-build.mongodbUriEnv` (the app's own
+credential) so the exporter still runs, with reduced metrics coverage until a proper credential
+is supplied. Renders a single EnvVar entry at zero indentation.
+*/}}
+{{- define "eve-build.mongodbExporterUriEnv" -}}
+{{- if .Values.mongodb.enabled }}
+- name: MONGODB_URI
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Release.Name }}-mongodb-exporter-connection
+      key: connectionString.standard
+{{- else if .Values.mongodb.exporter.existingSecret }}
+- name: MONGODB_URI
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.mongodb.exporter.existingSecret }}
+      key: {{ .Values.mongodb.exporter.existingSecretKey }}
+{{- else }}
+{{- include "eve-build.mongodbUriEnv" . }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Shared container env vars for every eve-build workload (the app Deployment, plus the
+market-orders dispatch CronJob and fetch/write worker Deployments) - they all need the same
+Mongo/Redis/RabbitMQ/ESI/SSO configuration. Renders a list of EnvVar entries at zero indentation;
+callers should `{{- include "eve-build.env" . | nindent 12 }}` under their container's `env:` key.
+*/}}
+{{- define "eve-build.env" -}}
+{{- $redisEnabled := or .Values.redis.enabled (ne .Values.redis.url "") }}
+{{- $redisUrl := .Values.redis.enabled | ternary (printf "redis://%s-redis:6379/0" .Release.Name) .Values.redis.url }}
+{{- $sessionSecretName := .Values.eveBuild.session.existingSecret | default (printf "%s-session" .Release.Name) }}
+{{- $sessionSecretKey := (ne .Values.eveBuild.session.existingSecret "") | ternary .Values.eveBuild.session.existingSecretKey "secretKey" }}
+{{- $marketPricesSecretName := .Values.eveBuild.marketPrices.existingSecret | default (printf "%s-market-prices" .Release.Name) }}
+{{- $marketPricesSecretKey := (ne .Values.eveBuild.marketPrices.existingSecret "") | ternary .Values.eveBuild.marketPrices.existingSecretKey "apiKey" -}}
+{{- if and .Values.mongodb.externalSecret.enabled (not .Values.mongodb.enabled) }}
+- name: MONGODB_DATABASE
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Release.Name }}-mongodb-external
+      key: dbName
+{{- else }}
+- name: MONGODB_DATABASE
+  value: {{ .Values.mongodb.database | quote }}
+{{- end }}
+{{- include "eve-build.mongodbUriEnv" . }}
 - name: SDE_DATA_DIR
   value: {{ .Values.eveBuild.sdeDataDir | quote }}
 - name: RUN_MIGRATIONS_ON_STARTUP
