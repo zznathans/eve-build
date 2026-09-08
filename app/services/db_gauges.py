@@ -17,6 +17,7 @@ MARKET_PRICES_CACHED = Gauge(
 async def refresh_db_gauges(db: AsyncIOMotorDatabase) -> None:
     CHARACTERS_TRACKED.set(await db.characters.count_documents({}))
     MARKET_PRICES_CACHED.set(await db.market_prices.count_documents({}))
+    MARKET_ORDERS_CACHED.set(await db.market_orders.count_documents({}))
 
 
 async def refresh_db_gauges_periodically(db: AsyncIOMotorDatabase, interval_seconds: int) -> None:
