@@ -3,7 +3,6 @@ templates:
   - market-orders-fetch-worker.yaml
   - market-orders-write-worker.yaml
   - market-orders-fetch-worker-scaledobject.yaml
-  - market-orders-write-worker-scaledobject.yaml
   - market-orders-keda-triggerauth.yaml
   - market-orders-rabbitmq-secret.yaml
 set:
@@ -17,9 +16,6 @@ tests:
       - hasDocuments:
           count: 0
         template: market-orders-fetch-worker-scaledobject.yaml
-      - hasDocuments:
-          count: 0
-        template: market-orders-write-worker-scaledobject.yaml
       - hasDocuments:
           count: 0
         template: market-orders-keda-triggerauth.yaml
@@ -36,15 +32,12 @@ tests:
         template: market-orders-fetch-worker-scaledobject.yaml
       - hasDocuments:
           count: 0
-        template: market-orders-write-worker-scaledobject.yaml
-      - hasDocuments:
-          count: 0
         template: market-orders-keda-triggerauth.yaml
       - hasDocuments:
           count: 0
         template: market-orders-rabbitmq-secret.yaml
 
-  - it: renders both ScaledObjects, a TriggerAuthentication and a connection Secret when both are enabled
+  - it: renders the ScaledObject, a TriggerAuthentication and a connection Secret when both are enabled
     set:
       rabbitmq.enabled: true
       keda.enabled: true
@@ -55,12 +48,6 @@ tests:
       - isKind:
           of: ScaledObject
         template: market-orders-fetch-worker-scaledobject.yaml
-      - hasDocuments:
-          count: 1
-        template: market-orders-write-worker-scaledobject.yaml
-      - isKind:
-          of: ScaledObject
-        template: market-orders-write-worker-scaledobject.yaml
       - hasDocuments:
           count: 1
         template: market-orders-keda-triggerauth.yaml
@@ -107,20 +94,6 @@ tests:
           value: RELEASE-NAME-rabbitmq-conn
         template: market-orders-fetch-worker-scaledobject.yaml
 
-  - it: write-worker ScaledObject targets the correct queue
-    set:
-      rabbitmq.enabled: true
-      keda.enabled: true
-    asserts:
-      - equal:
-          path: spec.scaleTargetRef.name
-          value: RELEASE-NAME-market-orders-write-worker
-        template: market-orders-write-worker-scaledobject.yaml
-      - equal:
-          path: spec.triggers[0].metadata.queueName
-          value: market_orders.results
-        template: market-orders-write-worker-scaledobject.yaml
-
   - it: omits replicas on the fetch-worker Deployment when keda is enabled
     set:
       rabbitmq.enabled: true
@@ -139,13 +112,14 @@ tests:
           value: 3
         template: market-orders-fetch-worker.yaml
 
-  - it: omits replicas on the write-worker Deployment when keda is enabled
+  - it: always sets replicas on the write-worker Deployment, keda enabled or not
     set:
       rabbitmq.enabled: true
       keda.enabled: true
     asserts:
-      - notExists:
+      - equal:
           path: spec.replicas
+          value: 1
         template: market-orders-write-worker.yaml
 
   - it: TriggerAuthentication points at the chart-managed secret by default
@@ -201,7 +175,7 @@ tests:
           value: "2"
         template: market-orders-keda-triggerauth.yaml
 
-  - it: syncs both ScaledObjects last (wave 3)
+  - it: syncs the ScaledObject last (wave 3)
     set:
       rabbitmq.enabled: true
       keda.enabled: true
@@ -210,7 +184,3 @@ tests:
           path: metadata.annotations["argocd.argoproj.io/sync-wave"]
           value: "3"
         template: market-orders-fetch-worker-scaledobject.yaml
-      - equal:
-          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
-          value: "3"
-        template: market-orders-write-worker-scaledobject.yaml

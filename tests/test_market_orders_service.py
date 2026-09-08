@@ -53,8 +53,8 @@ async def test_dispatch_scrape_enqueues_one_job_per_region() -> None:
 
 
 @respx.mock
-async def test_run_fetch_job_chunks_orders_and_publishes_them() -> None:
-    settings = Settings(market_orders_chunk_size=1)
+async def test_run_fetch_job_publishes_one_message_per_order() -> None:
+    settings = Settings()
     respx.get(f"{settings.esi_base_url}/markets/10000002/orders/", params={"page": 1}).mock(
         return_value=Response(200, headers={"X-Pages": "2"}, json=[_SAMPLE_ORDER])
     )
@@ -68,13 +68,13 @@ async def test_run_fetch_job_chunks_orders_and_publishes_them() -> None:
 
     await market_orders.run_fetch_job(settings, job, publisher)
 
-    chunk_messages = []
+    order_messages = []
     for queue_name, body in publisher.messages:
-        assert queue_name == rabbitmq.MARKET_ORDERS_RESULTS_QUEUE
-        chunk_messages.append(rabbitmq.decode_orders_chunk(body))
+        assert queue_name == rabbitmq.market_order_results_queue_name(10000002)
+        order_messages.append(rabbitmq.decode_order(body))
 
-    assert len(chunk_messages) == 2  # chunk_size=1, two orders fetched
-    assert {chunk.orders[0]["order_id"] for chunk in chunk_messages} == {1, 2}
+    assert len(order_messages) == 2  # two orders fetched, one message each
+    assert {message.order["order_id"] for message in order_messages} == {1, 2}
 
 
 @respx.mock
@@ -91,14 +91,12 @@ async def test_run_fetch_job_handles_region_with_no_market() -> None:
     assert publisher.messages == []
 
 
-async def test_apply_orders_chunk_inserts_one_row_per_order(
+async def test_apply_order_inserts_one_row(
     mongo_db: AsyncMongoMockClient,
 ) -> None:
-    message = rabbitmq.OrdersChunkMessage(
-        region_id=10000002, scrape_run_id="run-1", orders=[_SAMPLE_ORDER]
-    )
+    message = rabbitmq.OrderMessage(region_id=10000002, scrape_run_id="run-1", order=_SAMPLE_ORDER)
 
-    count = await market_orders.apply_orders_chunk(mongo_db, message)
+    count = await market_orders.apply_order(mongo_db, message)
 
     assert count == 1
     order = await mongo_db.market_orders.find_one({"order_id": 1, "scrape_run_id": "run-1"})
@@ -107,16 +105,14 @@ async def test_apply_orders_chunk_inserts_one_row_per_order(
     assert order["price"] == 5.5
 
 
-async def test_apply_orders_chunk_ignores_duplicates_on_redelivery(
+async def test_apply_order_ignores_duplicates_on_redelivery(
     mongo_db: AsyncMongoMockClient,
 ) -> None:
     await mongo_db.market_orders.create_index([("order_id", 1), ("scrape_run_id", 1)], unique=True)
-    message = rabbitmq.OrdersChunkMessage(
-        region_id=10000002, scrape_run_id="run-1", orders=[_SAMPLE_ORDER]
-    )
+    message = rabbitmq.OrderMessage(region_id=10000002, scrape_run_id="run-1", order=_SAMPLE_ORDER)
 
-    await market_orders.apply_orders_chunk(mongo_db, message)
-    await market_orders.apply_orders_chunk(mongo_db, message)  # redelivered chunk
+    await market_orders.apply_order(mongo_db, message)
+    await market_orders.apply_order(mongo_db, message)  # redelivered message
 
     order_count = await mongo_db.market_orders.count_documents(
         {"order_id": 1, "scrape_run_id": "run-1"}

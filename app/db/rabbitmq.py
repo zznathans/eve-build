@@ -8,7 +8,12 @@ from fastapi import Request
 from app.core.config import Settings
 
 MARKET_ORDERS_SCRAPE_JOBS_QUEUE = "market_orders.scrape_jobs"
-MARKET_ORDERS_RESULTS_QUEUE = "market_orders.results"
+MARKET_PRICE_REFRESH_RESULTS_QUEUE = "market_orders.price_refresh_results"
+MARKET_ORDER_RESULTS_QUEUE_PREFIX = "market_orders.results"
+
+
+def market_order_results_queue_name(region_id: int) -> str:
+    return f"{MARKET_ORDER_RESULTS_QUEUE_PREFIX}.{region_id}"
 
 
 async def create_rabbitmq_connection(
@@ -27,8 +32,16 @@ async def declare_market_order_queues(
     channel: aio_pika.abc.AbstractChannel,
 ) -> tuple[aio_pika.abc.AbstractQueue, aio_pika.abc.AbstractQueue]:
     scrape_jobs_queue = await channel.declare_queue(MARKET_ORDERS_SCRAPE_JOBS_QUEUE, durable=True)
-    results_queue = await channel.declare_queue(MARKET_ORDERS_RESULTS_QUEUE, durable=True)
-    return scrape_jobs_queue, results_queue
+    price_refresh_results_queue = await channel.declare_queue(
+        MARKET_PRICE_REFRESH_RESULTS_QUEUE, durable=True
+    )
+    return scrape_jobs_queue, price_refresh_results_queue
+
+
+async def declare_market_order_results_queue(
+    channel: aio_pika.abc.AbstractChannel, region_id: int
+) -> aio_pika.abc.AbstractQueue:
+    return await channel.declare_queue(market_order_results_queue_name(region_id), durable=True)
 
 
 @dataclass(frozen=True)
@@ -42,11 +55,10 @@ class ScrapeJobMessage:
 
 
 @dataclass(frozen=True)
-class OrdersChunkMessage:
+class OrderMessage:
     region_id: int
     scrape_run_id: str
-    orders: list[dict[str, Any]]
-    kind: str = "orders"
+    order: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -63,7 +75,6 @@ class PriceRefreshJobMessage:
 class PriceRefreshResultMessage:
     scrape_run_id: str
     prices: list[dict[str, Any]]
-    kind: str = "prices"
 
 
 def encode_scrape_job(message: ScrapeJobMessage) -> bytes:
@@ -74,12 +85,12 @@ def decode_scrape_job(payload: bytes) -> ScrapeJobMessage:
     return ScrapeJobMessage(**json.loads(payload))
 
 
-def encode_orders_chunk(message: OrdersChunkMessage) -> bytes:
+def encode_order(message: OrderMessage) -> bytes:
     return json.dumps(asdict(message)).encode("utf-8")
 
 
-def decode_orders_chunk(payload: bytes) -> OrdersChunkMessage:
-    return OrdersChunkMessage(**json.loads(payload))
+def decode_order(payload: bytes) -> OrderMessage:
+    return OrderMessage(**json.loads(payload))
 
 
 def encode_price_refresh_job(message: PriceRefreshJobMessage) -> bytes:
@@ -105,12 +116,3 @@ def decode_job(payload: bytes) -> ScrapeJobMessage | PriceRefreshJobMessage:
     if data.get("kind") == "prices":
         return PriceRefreshJobMessage(**data)
     return ScrapeJobMessage(**data)
-
-
-def decode_result(payload: bytes) -> OrdersChunkMessage | PriceRefreshResultMessage:
-    """Peeks `kind` on a results-queue message to pick which dataclass to decode into - used
-    by the write worker, which consumes both result types off the same queue."""
-    data = json.loads(payload)
-    if data.get("kind") == "prices":
-        return PriceRefreshResultMessage(**data)
-    return OrdersChunkMessage(**data)

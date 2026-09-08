@@ -36,6 +36,15 @@ tests:
           path: spec.replicas
           value: 2
 
+  - it: still sets replicas when keda is enabled - the write-worker is never KEDA-managed
+    set:
+      rabbitmq.enabled: true
+      keda.enabled: true
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+
   - it: runs the write worker script via the app image
     set:
       rabbitmq.enabled: true

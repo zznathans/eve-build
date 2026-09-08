@@ -1,3 +1,4 @@
+import contextlib
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict
@@ -38,8 +39,8 @@ async def dispatch_scrape(settings: Settings, publish: Publish) -> str:
 async def run_fetch_job(
     settings: Settings, job: rabbitmq.ScrapeJobMessage, publish: Publish
 ) -> None:
-    """Fetches every page of a region's market orders and publishes them to the results queue in
-    chunks. Regions with no market (404) yield zero orders/pages."""
+    """Fetches every page of a region's market orders and publishes each one individually to
+    that region's own results queue. Regions with no market (404) yield zero orders/pages."""
     orders: list[esi.MarketOrderEntry] = []
 
     first_page, total_pages = await esi.get_market_orders_page(settings, job.region_id, 1)
@@ -49,39 +50,29 @@ async def run_fetch_job(
         page_orders, _ = await esi.get_market_orders_page(settings, job.region_id, page)
         orders.extend(page_orders)
 
-    for start in range(0, len(orders), settings.market_orders_chunk_size):
-        chunk = orders[start : start + settings.market_orders_chunk_size]
-        chunk_message = rabbitmq.OrdersChunkMessage(
+    queue_name = rabbitmq.market_order_results_queue_name(job.region_id)
+    for order in orders:
+        order_message = rabbitmq.OrderMessage(
             region_id=job.region_id,
             scrape_run_id=job.scrape_run_id,
-            orders=[asdict(entry) for entry in chunk],
+            order=asdict(order),
         )
-        await publish(
-            rabbitmq.MARKET_ORDERS_RESULTS_QUEUE, rabbitmq.encode_orders_chunk(chunk_message)
-        )
+        await publish(queue_name, rabbitmq.encode_order(order_message))
 
 
-async def apply_orders_chunk(db: AsyncIOMotorDatabase, message: rabbitmq.OrdersChunkMessage) -> int:
-    """Dumps every order in the chunk into market_orders wholesale - one row per order per
-    scrape run, deduped on redelivery via the unique (order_id, scrape_run_id) index. Old rows
-    are expected to be expired by a TTL index rather than swept here."""
+async def apply_order(db: AsyncIOMotorDatabase, message: rabbitmq.OrderMessage) -> int:
+    """Inserts one order into market_orders - one row per order per scrape run, deduped on
+    redelivery via the unique (order_id, scrape_run_id) index. Old rows are expected to be
+    expired by a TTL index rather than swept here."""
     now = datetime.now(UTC).replace(tzinfo=None)
 
-    docs = [
-        {
-            **order,
-            "region_id": message.region_id,
-            "scrape_run_id": message.scrape_run_id,
-            "scraped_at": now,
-        }
-        for order in message.orders
-    ]
-    if docs:
-        try:
-            await db.market_orders.insert_many(docs, ordered=False)
-        except pymongo.errors.BulkWriteError as exc:
-            write_errors = exc.details.get("writeErrors", []) if exc.details else []
-            if any(error.get("code") != 11000 for error in write_errors):
-                raise
+    doc = {
+        **message.order,
+        "region_id": message.region_id,
+        "scrape_run_id": message.scrape_run_id,
+        "scraped_at": now,
+    }
+    with contextlib.suppress(pymongo.errors.DuplicateKeyError):
+        await db.market_orders.insert_one(doc)
 
-    return len(message.orders)
+    return 1

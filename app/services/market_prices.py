@@ -66,7 +66,7 @@ async def run_price_refresh_job(
         prices=[asdict(entry) for entry in entries],
     )
     await publish(
-        rabbitmq.MARKET_ORDERS_RESULTS_QUEUE, rabbitmq.encode_price_refresh_result(result)
+        rabbitmq.MARKET_PRICE_REFRESH_RESULTS_QUEUE, rabbitmq.encode_price_refresh_result(result)
     )
 
 

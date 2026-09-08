@@ -147,8 +147,9 @@ eveBuild:
     # plus one market-price refresh job (see eveBuild.marketPrices above) - one coordinated
     # "update the market" batch per run.
     dispatchSchedule: "0 * * * *"
-    # -- Shared KEDA settings for both worker ScaledObjects below. Only used when
-    # `keda.enabled` is true - see the top-level `keda` section.
+    # -- KEDA settings for the fetch-worker's ScaledObject below - the write-worker isn't
+    # KEDA-managed (see writeWorker.replicas). Only used when `keda.enabled` is true - see the
+    # top-level `keda` section.
     keda:
       # -- How often (in seconds) KEDA polls RabbitMQ for the current queue length.
       pollingInterval: 15
@@ -178,9 +179,10 @@ eveBuild:
         # (queue length / queueLength) replicas are running, up to maxReplicas.
         queueLength: 5
     writeWorker:
-      # -- Number of write-worker replicas. Ignored (and no `replicas` field rendered on the
-      # Deployment) when `keda.enabled` is true - the ScaledObject's HPA owns replica count
-      # instead. Each consumes order batches from RabbitMQ and persists them to MongoDB.
+      # -- Number of write-worker replicas. Always rendered - unlike the fetch-worker, this
+      # Deployment is never KEDA-managed: each replica discovers every region's results queue
+      # (plus the price-refresh queue) at startup and is a competing consumer on all of them, so
+      # scaling is a fixed replica count rather than queue-length-driven.
       replicas: 1
       # -- Resource requests and limits for the write-worker container.
       resources:
@@ -190,13 +192,6 @@ eveBuild:
         limits:
           cpu: 250m
           memory: 256Mi
-      keda:
-        # -- Minimum write-worker replicas KEDA will scale down to.
-        minReplicas: 0
-        # -- Maximum write-worker replicas KEDA will scale up to.
-        maxReplicas: 3
-        # -- Target number of queued result chunks per replica.
-        queueLength: 50
 
   # -- Directory the bundled EVE SDE data is read from at migration time.
   # Only override this if you're mounting a custom SDE dataset.
@@ -516,9 +511,10 @@ rabbitmq:
   existingSecretKey: "url"
 
 keda:
-  # -- Autoscale the market-orders fetch/write worker Deployments with KEDA
-  # (https://keda.sh) ScaledObjects driven by RabbitMQ queue length, instead of the fixed
-  # `fetchWorker.replicas`/`writeWorker.replicas` counts. Requires the KEDA operator already
-  # installed in the cluster and `rabbitmq.enabled: true` - ignored otherwise. When enabled,
-  # workers can scale to zero between dispatch runs and scale up automatically under backlog.
+  # -- Autoscale the market-orders fetch-worker Deployment with a KEDA (https://keda.sh)
+  # ScaledObject driven by RabbitMQ queue length, instead of the fixed `fetchWorker.replicas`
+  # count. Requires the KEDA operator already installed in the cluster and
+  # `rabbitmq.enabled: true` - ignored otherwise. When enabled, the fetch-worker can scale to
+  # zero between dispatch runs and scale up automatically under backlog. The write-worker always
+  # runs `writeWorker.replicas` regardless of this setting - see writeWorker.replicas.
   enabled: false

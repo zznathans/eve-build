@@ -97,7 +97,7 @@ async def test_run_price_refresh_job_publishes_a_result(test_settings: Settings)
 
     assert len(publisher.messages) == 1
     queue_name, body = publisher.messages[0]
-    assert queue_name == rabbitmq.MARKET_ORDERS_RESULTS_QUEUE
+    assert queue_name == rabbitmq.MARKET_PRICE_REFRESH_RESULTS_QUEUE
     result = rabbitmq.decode_price_refresh_result(body)
     assert result.scrape_run_id == "run-1"
     assert result.prices == [{"type_id": 34, "adjusted_price": 5.12, "average_price": 5.5}]

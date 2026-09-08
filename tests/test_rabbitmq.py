@@ -9,13 +9,13 @@ def test_scrape_job_message_roundtrips_through_json() -> None:
     assert decoded == message
 
 
-def test_orders_chunk_message_roundtrips_through_json() -> None:
-    message = rabbitmq.OrdersChunkMessage(
+def test_order_message_roundtrips_through_json() -> None:
+    message = rabbitmq.OrderMessage(
         region_id=10000002,
         scrape_run_id="run-1",
-        orders=[{"order_id": 1, "type_id": 34, "price": 5.5}],
+        order={"order_id": 1, "type_id": 34, "price": 5.5},
     )
 
-    decoded = rabbitmq.decode_orders_chunk(rabbitmq.encode_orders_chunk(message))
+    decoded = rabbitmq.decode_order(rabbitmq.encode_order(message))
 
     assert decoded == message

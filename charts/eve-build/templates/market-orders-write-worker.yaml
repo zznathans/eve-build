@@ -8,9 +8,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"
 spec:
   revisionHistoryLimit: 3
-  {{- if not .Values.keda.enabled }}
   replicas: {{ .Values.eveBuild.marketOrders.writeWorker.replicas }}
-  {{- end }}
   selector:
     matchLabels:
       app: {{ .Release.Name }}-market-orders-write-worker
