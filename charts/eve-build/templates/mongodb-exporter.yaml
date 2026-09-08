@@ -31,7 +31,13 @@ spec:
             # here (the bundled MongoDBCommunity connection string lists every member, and
             # externalSecret assembles a mongodb+srv:// URI for DigitalOcean Managed MongoDB)
             # - so direct-connect must stay off or the exporter fails to connect at all.
+            - --no-mongodb.direct-connect
             - --collect-all
+            {{- if .Values.mongodb.exporter.discoveringMode }}
+            # Discover every shard/replica set member behind the connection URI and scrape
+            # each one individually, rather than only whichever member the driver connects to.
+            - --discovering-mode
+            {{- end }}
             {{- if .Values.mongodb.exporter.compatibleMode }}
             # Also expose the old (v1-style) metric names/labels alongside the current ones,
             # so dashboards built against the older exporter keep working unmodified.
