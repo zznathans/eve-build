@@ -96,14 +96,68 @@ spec:
   statefulSet:
     spec:
       template:
+        # metadata is a sibling of spec on a PodTemplateSpec, same as any Pod's own
+        # metadata/spec split - nesting it inside spec (as this block previously did) means
+        # the operator silently drops it, since PodSpec has no metadata field to merge onto.
+        metadata:
+          annotations:
+            argocd.argoproj.io/sync-wave: "-2"
+            {{- if and .Values.mongodb.exporter.enabled .Values.mongodb.exporter.perNode }}
+            # Same annotation-based scrape convention mongodb-exporter.yaml's standalone
+            # Deployment uses (see its podAnnotations default) - lets a Prometheus without
+            # the Operator CRDs installed still pick this sidecar up.
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "9216"
+            prometheus.io/path: /metrics
+            {{- end }}
         spec:
-          metadata:
-            annotations:
-              argocd.argoproj.io/sync-wave: "-2"
           containers:
             - name: mongod
               resources:
                 {{- toYaml .Values.mongodb.resources | nindent 16 }}
+            {{- if and .Values.mongodb.exporter.enabled .Values.mongodb.exporter.perNode }}
+            - name: mongodb-exporter
+              image: percona/mongodb_exporter:{{ .Values.mongodb.exporter.version }}
+              args:
+                # Direct-connected to this pod's own mongod, unlike the centralized
+                # Deployment's replica-set-aware URI - so every serverStatus/dbStats-derived
+                # metric (mongodb_ss_*, mongodb_dbstats_*) reports on this member specifically,
+                # not just whichever one the driver treats as primary. No --discovering-mode:
+                # there's only ever the one database's worth of collections to enumerate here.
+                - --mongodb.direct-connect
+                - --collect-all
+                {{- if .Values.mongodb.exporter.compatibleMode }}
+                - --compatible-mode
+                {{- end }}
+                {{- with .Values.mongodb.exporter.extraArgs }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+              env:
+                - name: MONGO_EXPORTER_USER
+                  value: {{ .Values.mongodb.exporter.username }}
+                - name: MONGO_EXPORTER_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-mongodb-exporter-password
+                      key: password
+                # $(...) dependent-env-var expansion, not shell substitution - requires the
+                # two vars above to already be defined earlier in this same list.
+                - name: MONGODB_URI
+                  value: "mongodb://$(MONGO_EXPORTER_USER):$(MONGO_EXPORTER_PASSWORD)@localhost:27017/admin?directConnection=true"
+              ports:
+                - name: metrics
+                  containerPort: 9216
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                runAsUser: 999
+                seccompProfile:
+                  type: RuntimeDefault
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                {{- toYaml .Values.mongodb.exporter.resources | nindent 16 }}
+            {{- end }}
       volumeClaimTemplates:
         - metadata:
             name: data-volume

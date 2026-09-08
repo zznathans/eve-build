@@ -1,0 +1,34 @@
+suite: mongodb-exporter-servicemonitor
+templates:
+  - mongodb-exporter-servicemonitor.yaml
+tests:
+  - it: renders nothing when the exporter is disabled (the default)
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders nothing when the exporter is enabled but its serviceMonitor is disabled
+    set:
+      mongodb.exporter.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders a ServiceMonitor when both are enabled
+    set:
+      mongodb.exporter.enabled: true
+      mongodb.exporter.serviceMonitor.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: ServiceMonitor
+
+  - it: renders nothing when perNode is true, even with the serviceMonitor enabled
+    set:
+      mongodb.exporter.enabled: true
+      mongodb.exporter.serviceMonitor.enabled: true
+      mongodb.exporter.perNode: true
+    asserts:
+      - hasDocuments:
+          count: 0

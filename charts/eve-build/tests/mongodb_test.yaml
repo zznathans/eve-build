@@ -21,6 +21,10 @@ tests:
       - equal:
           path: spec.members
           value: 3
+      - equal:
+          path: spec.statefulSet.spec.template.metadata.annotations
+          value:
+            argocd.argoproj.io/sync-wave: "-2"
 
   - it: generates a password Secret when passwordSecretName isn't set
     set:
@@ -135,3 +139,59 @@ tests:
               db: admin
             - name: listCollectionsAnyDatabase
               db: admin
+
+  - it: does not add a per-node exporter sidecar when perNode is unset (the default)
+    set:
+      mongodb.enabled: true
+      mongodb.passwordSecretName: eve-build-mongodb-password
+      mongodb.exporter.enabled: true
+    documentIndex: 1
+    asserts:
+      - lengthEqual:
+          path: spec.statefulSet.spec.template.spec.containers
+          count: 1
+
+  - it: does not add a per-node exporter sidecar when the exporter itself is disabled
+    set:
+      mongodb.enabled: true
+      mongodb.passwordSecretName: eve-build-mongodb-password
+      mongodb.exporter.perNode: true
+    asserts:
+      - lengthEqual:
+          path: spec.statefulSet.spec.template.spec.containers
+          count: 1
+
+  - it: adds a direct-connected exporter sidecar to every mongod pod when perNode is true
+    set:
+      mongodb.enabled: true
+      mongodb.passwordSecretName: eve-build-mongodb-password
+      mongodb.exporter.enabled: true
+      mongodb.exporter.perNode: true
+      mongodb.exporter.username: someexporter
+    documentIndex: 1
+    asserts:
+      - lengthEqual:
+          path: spec.statefulSet.spec.template.spec.containers
+          count: 2
+      - equal:
+          path: spec.statefulSet.spec.template.spec.containers[1].name
+          value: mongodb-exporter
+      - contains:
+          path: spec.statefulSet.spec.template.spec.containers[1].args
+          content: --mongodb.direct-connect
+      - notContains:
+          path: spec.statefulSet.spec.template.spec.containers[1].args
+          content: --discovering-mode
+      - equal:
+          path: spec.statefulSet.spec.template.spec.containers[1].env[0].value
+          value: someexporter
+      - equal:
+          path: spec.statefulSet.spec.template.spec.containers[1].env[2].value
+          value: "mongodb://$(MONGO_EXPORTER_USER):$(MONGO_EXPORTER_PASSWORD)@localhost:27017/admin?directConnection=true"
+      - equal:
+          path: spec.statefulSet.spec.template.metadata.annotations
+          value:
+            argocd.argoproj.io/sync-wave: "-2"
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "9216"
+            prometheus.io/path: /metrics

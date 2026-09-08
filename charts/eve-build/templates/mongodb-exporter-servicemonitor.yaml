@@ -1,4 +1,4 @@
-{{- if and .Values.mongodb.exporter.enabled .Values.mongodb.exporter.serviceMonitor.enabled }}
+{{- if and .Values.mongodb.exporter.enabled .Values.mongodb.exporter.serviceMonitor.enabled (not .Values.mongodb.exporter.perNode) }}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
