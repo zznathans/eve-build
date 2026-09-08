@@ -51,15 +51,35 @@ tests:
 
   - it: gives the startup probe enough headroom to outlast a slow migration
     asserts:
-      # periodSeconds * failureThreshold must comfortably exceed a slow first-boot
-      # migration run, or Kubernetes kills the pod mid-migration before /health ever
-      # responds - readiness/liveness only start probing once this one succeeds.
+      # periodSeconds * failureThreshold must comfortably exceed both a slow first-boot
+      # migration run AND eveBuild.startupLockWaitTimeoutSeconds (a pod can block waiting
+      # for another pod's migration lock before running its own fast pass), or Kubernetes
+      # kills the pod before /health ever responds - readiness/liveness only start probing
+      # once this one succeeds.
       - equal:
           path: spec.template.spec.containers[0].startupProbe.periodSeconds
           value: 10
       - equal:
           path: spec.template.spec.containers[0].startupProbe.failureThreshold
-          value: 30
+          value: 60
+
+  - it: renders the startup lock tuning env vars with their defaults
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: STARTUP_LOCK_TTL_SECONDS
+            value: "480"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: STARTUP_LOCK_POLL_INTERVAL_SECONDS
+            value: "2"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: STARTUP_LOCK_WAIT_TIMEOUT_SECONDS
+            value: "420"
 
   - it: runs as a non-root user with hardened security context
     asserts:

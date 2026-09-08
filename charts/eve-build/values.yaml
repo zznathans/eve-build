@@ -204,6 +204,28 @@ eveBuild:
   # -- Run pending database migrations (including the initial SDE import)
   # automatically on startup.
   runMigrationsOnStartup: true
+  # -- TTL (seconds) on the Mongo-based lock a pod holds while running migrations/index
+  # sync on startup - every replica attempts this on every start (there's no separate
+  # migration Job), so the lock keeps concurrent pods from racing on the same not-yet-
+  # applied migration. A holder pod that crashes without releasing leaves the lock
+  # reclaimable after this many seconds. Keep comfortably below
+  # startupProbe.periodSeconds * startupProbe.failureThreshold, and above
+  # startupLockWaitTimeoutSeconds below.
+  startupLockTtlSeconds: 480
+  # -- How often (seconds) a pod waiting on the startup lock polls for it to free up.
+  startupLockPollIntervalSeconds: 2
+  # -- Max time (seconds) a pod will wait to acquire the startup lock before giving up and
+  # crashing - Kubernetes then restarts it, and it retries acquisition from scratch.
+  startupLockWaitTimeoutSeconds: 420
+
+  startupProbe:
+    # -- Seconds between startup-probe checks.
+    periodSeconds: 10
+    # -- Consecutive failures allowed before Kubernetes kills the pod during startup.
+    # periodSeconds * failureThreshold must comfortably outlast both a slow first-boot
+    # migration run AND startupLockWaitTimeoutSeconds above - a pod waiting on another
+    # pod's migration lock must not be killed before the holder can finish and release.
+    failureThreshold: 60
 
   service:
     # -- Port the Service listens on and forwards to the container's 8000.

@@ -15,6 +15,7 @@ from app.db.index_sync import sync_indexes
 from app.db.mongo import create_mongo_client
 from app.db.rabbitmq import create_rabbitmq_connection
 from app.db.redis import create_redis_client
+from app.db.startup_lock import startup_lock
 from app.migrations.runner import run_migrations
 from app.routes import (
     assets,
@@ -64,21 +65,34 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         else:
             logger.info("RabbitMQ disabled, skipping connection")
 
-        if settings.run_migrations_on_startup:
-            logger.info("Running database migrations")
-            await run_migrations(app.state.mongo_client[settings.mongodb_database], settings)
-            logger.info("Database migrations complete")
-        else:
-            logger.info("Skipping database migrations (run_migrations_on_startup=False)")
+        if settings.run_migrations_on_startup or settings.sync_indexes_on_startup:
+            # Every pod runs this on startup (there's no separate migration Job), so this
+            # lock keeps concurrent pods from racing on the same not-yet-applied migration -
+            # a losing pod would otherwise hit an uncaught DuplicateKeyError inserting into
+            # _migrations mid-startup. A pod that waits still runs both steps itself once it
+            # acquires the lock, relying on their existing per-migration/per-index
+            # idempotency to make that fast (an "already applied" pass, not a re-import).
+            async with startup_lock(app.state.mongo_client[settings.mongodb_database], settings):
+                if settings.run_migrations_on_startup:
+                    logger.info("Running database migrations")
+                    await run_migrations(
+                        app.state.mongo_client[settings.mongodb_database], settings
+                    )
+                    logger.info("Database migrations complete")
+                else:
+                    logger.info("Skipping database migrations (run_migrations_on_startup=False)")
 
-        if settings.sync_indexes_on_startup:
-            logger.info("Syncing MongoDB indexes")
-            await sync_indexes(
-                app.state.mongo_client[settings.mongodb_database], settings.mongo_indexes_dir
-            )
-            logger.info("MongoDB index sync complete")
+                if settings.sync_indexes_on_startup:
+                    logger.info("Syncing MongoDB indexes")
+                    await sync_indexes(
+                        app.state.mongo_client[settings.mongodb_database],
+                        settings.mongo_indexes_dir,
+                    )
+                    logger.info("MongoDB index sync complete")
+                else:
+                    logger.info("Skipping MongoDB index sync (sync_indexes_on_startup=False)")
         else:
-            logger.info("Skipping MongoDB index sync (sync_indexes_on_startup=False)")
+            logger.info("Skipping database migrations and MongoDB index sync (both disabled)")
 
         if settings.metrics_enabled and settings.metrics_db_gauges_enabled:
             db_gauges_task = asyncio.create_task(
