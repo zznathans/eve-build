@@ -50,6 +50,20 @@ spec:
   security:
     authentication:
       modes: ["SCRAM"]
+    {{- if .Values.mongodb.exporter.enabled }}
+    roles:
+      # clusterMonitor doesn't include listCollections on arbitrary databases, which
+      # --discovering-mode needs to enumerate each database's collections during discovery -
+      # without this, discovery fails with an Unauthorized error on every non-admin database.
+      - role: listCollectionsAnyDatabase
+        db: admin
+        privileges:
+          - resource:
+              db: ""
+              collection: ""
+            actions: ["listCollections"]
+        roles: []
+    {{- end }}
   users:
     - name: {{ .Values.mongodb.username }}
       db: admin
@@ -69,8 +83,12 @@ spec:
         # clusterMonitor is the built-in role mongodb_exporter's diagnosticdata/dbstats/
         # topmetrics/indexstats collectors need (serverStatus, replSetGetStatus, dbStats,
         # etc.) - narrower than the app's own readWrite-on-one-database user, and it can't
-        # read or write application data.
+        # read or write application data. listCollectionsAnyDatabase (defined above) fills the
+        # one gap clusterMonitor leaves for --discovering-mode: listCollections on databases
+        # other than admin.
         - name: clusterMonitor
+          db: admin
+        - name: listCollectionsAnyDatabase
           db: admin
       scramCredentialsSecretName: {{ .Release.Name }}-mongodb-exporter-scram
       connectionStringSecretName: {{ .Release.Name }}-mongodb-exporter-connection
