@@ -94,3 +94,44 @@ tests:
       - equal:
           path: spec.statefulSet.spec.volumeClaimTemplates[0].spec.resources.requests.storage
           value: 20Gi
+
+  - it: does not define custom roles or an exporter user when the exporter is disabled
+    set:
+      mongodb.enabled: true
+      mongodb.passwordSecretName: eve-build-mongodb-password
+    asserts:
+      - notExists:
+          path: spec.security.roles
+      - lengthEqual:
+          path: spec.users
+          count: 1
+
+  - it: grants the exporter user clusterMonitor plus a custom listCollections role
+    set:
+      mongodb.enabled: true
+      mongodb.passwordSecretName: eve-build-mongodb-password
+      mongodb.exporter.enabled: true
+      mongodb.exporter.username: someexporter
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.security.roles[0]
+          value:
+            role: listCollectionsAnyDatabase
+            db: admin
+            privileges:
+              - resource:
+                  db: ""
+                  collection: ""
+                actions: ["listCollections"]
+            roles: []
+      - equal:
+          path: spec.users[1].name
+          value: someexporter
+      - equal:
+          path: spec.users[1].roles
+          value:
+            - name: clusterMonitor
+              db: admin
+            - name: listCollectionsAnyDatabase
+              db: admin
