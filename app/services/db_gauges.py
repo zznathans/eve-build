@@ -15,9 +15,7 @@ MARKET_PRICES_CACHED = Gauge(
 MARKET_ORDERS_CACHED = Gauge(
     "eve_build_market_orders_cached_total", "Market order entries cached in MongoDB"
 )
-PLANS_STORED = Gauge(
-    "eve_build_plans_stored_total", "Plan entries stored in MongoDB"
-)
+PLANS_STORED = Gauge("eve_build_plans_stored_total", "Plan entries stored in MongoDB")
 SDE_BLUEPRINTS_CACHED = Gauge(
     "eve_build_sde_blueprints_cached_total", "SDE blueprint entries cached in MongoDB"
 )
@@ -28,9 +26,7 @@ SDE_PLANET_SCHEMATICS_CACHED = Gauge(
     "eve_build_sde_planet_schematics_cached_total",
     "SDE planet schematic entries cached in MongoDB",
 )
-SDE_TYPES_CACHED = Gauge(
-    "eve_build_sde_types_cached_total", "SDE type entries cached in MongoDB"
-)
+SDE_TYPES_CACHED = Gauge("eve_build_sde_types_cached_total", "SDE type entries cached in MongoDB")
 LOCATION_NAMES_CACHED = Gauge(
     "eve_build_location_names_cached_total", "Location name entries cached in MongoDB"
 )
