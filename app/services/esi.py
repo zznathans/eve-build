@@ -101,7 +101,7 @@ async def _respect_error_limit(response: httpx.Response, settings: Settings) -> 
     reset = response.headers.get("X-Esi-Error-Limit-Reset")
     if remain is None or reset is None:
         return
-    if int(remain) <= settings.market_orders_error_limit_threshold:
+    if int(remain) <= settings.esi_error_limit_threshold:
         await asyncio.sleep(float(reset))
 
 
@@ -125,7 +125,7 @@ async def _get_with_retry(
             status_code = exc.response.status_code
             if (
                 status_code not in _RETRYABLE_STATUS_CODES
-                or attempt >= settings.market_orders_page_retry_max_attempts
+                or attempt >= settings.esi_retry_max_attempts
             ):
                 raise
             await _sleep_before_retry(exc.response, attempt)
@@ -458,78 +458,6 @@ async def get_market_prices(settings: Settings) -> list[MarketPriceEntry]:
         )
         for entry in response.json()
     ]
-
-
-async def get_region_ids(settings: Settings) -> list[int]:
-    """Unauthenticated - ESI's /universe/regions/ endpoint is public. Includes a handful of
-    wormhole/void regions that have no market (see get_market_orders_page's 404 handling)."""
-    url = f"{settings.esi_base_url}/universe/regions/"
-    headers = _headers(settings, None)
-
-    async with httpx.AsyncClient() as client:
-        response = await _get_with_retry(
-            client, url, endpoint="universe/regions", settings=settings, headers=headers
-        )
-
-    return [int(region_id) for region_id in response.json()]
-
-
-@dataclass(frozen=True)
-class MarketOrderEntry:
-    order_id: int
-    type_id: int
-    location_id: int
-    is_buy_order: bool
-    price: float
-    volume_remain: int
-    volume_total: int
-    min_volume: int
-    duration: int
-    issued: str
-    range: str
-
-
-async def get_market_orders_page(
-    settings: Settings, region_id: int, page: int
-) -> tuple[list[MarketOrderEntry], int]:
-    """Fetches one page of /markets/{region_id}/orders/. Returns ([], 0) for regions with no
-    market (e.g. wormhole regions), which ESI reports as a 404, rather than raising."""
-    url = f"{settings.esi_base_url}/markets/{region_id}/orders/"
-    headers = _headers(settings, None)
-
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await _get_with_retry(
-                client,
-                url,
-                endpoint="markets/orders",
-                settings=settings,
-                params={"page": page},
-                headers=headers,
-            )
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 404:
-                return [], 0
-            raise
-
-    total_pages = int(response.headers.get("X-Pages", "1"))
-    entries = [
-        MarketOrderEntry(
-            order_id=entry["order_id"],
-            type_id=entry["type_id"],
-            location_id=entry["location_id"],
-            is_buy_order=entry["is_buy_order"],
-            price=entry["price"],
-            volume_remain=entry["volume_remain"],
-            volume_total=entry["volume_total"],
-            min_volume=entry["min_volume"],
-            duration=entry["duration"],
-            issued=entry["issued"],
-            range=entry["range"],
-        )
-        for entry in response.json()
-    ]
-    return entries, total_pages
 
 
 @dataclass(frozen=True)

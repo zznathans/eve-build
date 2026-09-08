@@ -170,74 +170,7 @@ async def test_get_location_details_records_error_on_forbidden() -> None:
 
 
 @respx.mock
-async def test_get_region_ids_returns_all_regions() -> None:
-    settings = Settings()
-    respx.get(f"{settings.esi_base_url}/universe/regions/").mock(
-        return_value=Response(200, json=[10000002, 10000043])
-    )
-
-    region_ids = await esi.get_region_ids(settings)
-
-    assert region_ids == [10000002, 10000043]
-
-
-_SAMPLE_ORDER = {
-    "order_id": 1,
-    "type_id": 34,
-    "location_id": 60003760,
-    "is_buy_order": False,
-    "price": 5.5,
-    "volume_remain": 100,
-    "volume_total": 200,
-    "min_volume": 1,
-    "duration": 90,
-    "issued": "2026-01-01T00:00:00Z",
-    "range": "region",
-}
-
-
-@respx.mock
-async def test_get_market_orders_page_parses_entries_and_page_count() -> None:
-    settings = Settings()
-    respx.get(f"{settings.esi_base_url}/markets/10000002/orders/", params={"page": 1}).mock(
-        return_value=Response(200, headers={"X-Pages": "3"}, json=[_SAMPLE_ORDER])
-    )
-
-    orders, total_pages = await esi.get_market_orders_page(settings, 10000002, 1)
-
-    assert total_pages == 3
-    assert orders == [
-        esi.MarketOrderEntry(
-            order_id=1,
-            type_id=34,
-            location_id=60003760,
-            is_buy_order=False,
-            price=5.5,
-            volume_remain=100,
-            volume_total=200,
-            min_volume=1,
-            duration=90,
-            issued="2026-01-01T00:00:00Z",
-            range="region",
-        )
-    ]
-
-
-@respx.mock
-async def test_get_market_orders_page_returns_empty_for_region_with_no_market() -> None:
-    settings = Settings()
-    respx.get(f"{settings.esi_base_url}/markets/10000004/orders/", params={"page": 1}).mock(
-        return_value=Response(404, json={"error": "Region not found"})
-    )
-
-    orders, total_pages = await esi.get_market_orders_page(settings, 10000004, 1)
-
-    assert orders == []
-    assert total_pages == 0
-
-
-@respx.mock
-async def test_get_market_orders_page_retries_transient_errors_then_succeeds(
+async def test_get_character_colony_detail_retries_transient_errors_then_succeeds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = Settings()
@@ -248,42 +181,41 @@ async def test_get_market_orders_page_retries_transient_errors_then_succeeds(
 
     monkeypatch.setattr(esi.asyncio, "sleep", fake_sleep)
 
-    respx.get(f"{settings.esi_base_url}/markets/10000002/orders/", params={"page": 1}).mock(
+    respx.get(f"{settings.esi_base_url}/characters/123/planets/40023001/").mock(
         side_effect=[
             Response(503, json={"error": "Service unavailable"}),
             Response(429, json={"error": "Too many errors"}),
-            Response(200, headers={"X-Pages": "1"}, json=[]),
+            Response(200, json={"pins": [], "links": [], "routes": []}),
         ]
     )
 
-    orders, total_pages = await esi.get_market_orders_page(settings, 10000002, 1)
+    detail = await esi.get_character_colony_detail(settings, "token", 123, 40023001)
 
-    assert orders == []
-    assert total_pages == 1
+    assert detail == esi.ColonyDetailEntry(pins=[], links=[], routes=[])
     assert len(sleeps) == 2
 
 
 @respx.mock
-async def test_get_market_orders_page_gives_up_after_max_attempts(
+async def test_get_character_colony_detail_gives_up_after_max_attempts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    settings = Settings(market_orders_page_retry_max_attempts=2)
+    settings = Settings(esi_retry_max_attempts=2)
 
     async def fake_sleep(delay: float) -> None:
         return None
 
     monkeypatch.setattr(esi.asyncio, "sleep", fake_sleep)
 
-    respx.get(f"{settings.esi_base_url}/markets/10000002/orders/", params={"page": 1}).mock(
+    respx.get(f"{settings.esi_base_url}/characters/123/planets/40023001/").mock(
         return_value=Response(503, json={"error": "Service unavailable"})
     )
 
     with pytest.raises(httpx.HTTPStatusError):
-        await esi.get_market_orders_page(settings, 10000002, 1)
+        await esi.get_character_colony_detail(settings, "token", 123, 40023001)
 
 
 @respx.mock
-async def test_get_market_orders_page_backs_off_when_error_limit_low(
+async def test_get_character_colony_detail_backs_off_when_error_limit_low(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = Settings()
@@ -294,18 +226,17 @@ async def test_get_market_orders_page_backs_off_when_error_limit_low(
 
     monkeypatch.setattr(esi.asyncio, "sleep", fake_sleep)
 
-    respx.get(f"{settings.esi_base_url}/markets/10000002/orders/", params={"page": 1}).mock(
+    respx.get(f"{settings.esi_base_url}/characters/123/planets/40023001/").mock(
         return_value=Response(
             200,
             headers={
-                "X-Pages": "1",
                 "X-Esi-Error-Limit-Remain": "5",
                 "X-Esi-Error-Limit-Reset": "20",
             },
-            json=[],
+            json={"pins": [], "links": [], "routes": []},
         )
     )
 
-    await esi.get_market_orders_page(settings, 10000002, 1)
+    await esi.get_character_colony_detail(settings, "token", 123, 40023001)
 
     assert sleeps == [20.0]

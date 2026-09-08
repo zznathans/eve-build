@@ -19,12 +19,11 @@ class Settings(BaseSettings):
     esi_base_url: str = "https://esi.evetech.net"
     esi_compatibility_date: str = "2026-08-18"
     esi_user_agent: str = "eve-build"
+    esi_retry_max_attempts: int = 5
+    esi_error_limit_threshold: int = 10
 
     market_prices_refresh_api_key: str = ""
-
-    market_orders_page_retry_max_attempts: int = 5
-    market_orders_error_limit_threshold: int = 10
-    market_orders_write_prefetch: int = 10
+    market_prices_write_prefetch: int = 10
 
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_database: str = "eve-build"

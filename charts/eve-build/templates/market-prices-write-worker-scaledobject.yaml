@@ -1,0 +1,25 @@
+{{- if and .Values.rabbitmq.enabled .Values.keda.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ .Release.Name }}-market-prices-write-worker
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  scaleTargetRef:
+    name: {{ .Release.Name }}-market-prices-write-worker
+  minReplicaCount: {{ .Values.eveBuild.marketPrices.writeWorker.keda.minReplicas }}
+  maxReplicaCount: {{ .Values.eveBuild.marketPrices.writeWorker.keda.maxReplicas }}
+  pollingInterval: {{ .Values.eveBuild.marketPrices.keda.pollingInterval }}
+  cooldownPeriod: {{ .Values.eveBuild.marketPrices.keda.cooldownPeriod }}
+  triggers:
+    - type: rabbitmq
+      metadata:
+        queueName: market_prices.refresh_results
+        mode: QueueLength
+        value: {{ .Values.eveBuild.marketPrices.writeWorker.keda.queueLength | quote }}
+        protocol: amqp
+      authenticationRef:
+        name: {{ .Release.Name }}-rabbitmq-conn
+{{- end }}

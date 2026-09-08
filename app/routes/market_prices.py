@@ -7,7 +7,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.config import Settings, get_settings
 from app.db.mongo import get_database
-from app.db.rabbitmq import declare_market_order_queues, get_rabbitmq
+from app.db.rabbitmq import declare_market_prices_queues, get_rabbitmq
 from app.services import market_prices
 
 router = APIRouter(prefix="/market-prices", tags=["market-prices"])
@@ -57,7 +57,7 @@ async def refresh_prices(
 
     channel = await rabbitmq_connection.channel()
     try:
-        await declare_market_order_queues(channel)
+        await declare_market_prices_queues(channel)
 
         async def publish(queue_name: str, body: bytes) -> None:
             await channel.default_exchange.publish(
@@ -65,11 +65,11 @@ async def refresh_prices(
                 routing_key=queue_name,
             )
 
-        scrape_run_id = await market_prices.dispatch_refresh(publish)
+        refresh_id = await market_prices.dispatch_refresh(publish)
     finally:
         await channel.close()
 
     return JSONResponse(
-        {"status": "queued", "scrape_run_id": scrape_run_id},
+        {"status": "queued", "refresh_id": refresh_id},
         status_code=status.HTTP_202_ACCEPTED,
     )

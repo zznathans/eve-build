@@ -1,6 +1,6 @@
-suite: market-orders-dispatch-cronjob
+suite: market-prices-dispatch-cronjob
 templates:
-  - market-orders-dispatch-cronjob.yaml
+  - market-prices-dispatch-cronjob.yaml
 set:
   eveBuild.marketPrices.refreshApiKey: my-api-key
   eveBuild.session.secretKey: my-session-key
@@ -22,7 +22,7 @@ tests:
   - it: uses the configured schedule
     set:
       rabbitmq.enabled: true
-      eveBuild.marketOrders.dispatchSchedule: "*/30 * * * *"
+      eveBuild.marketPrices.dispatchSchedule: "*/30 * * * *"
     asserts:
       - equal:
           path: spec.schedule
@@ -34,7 +34,7 @@ tests:
     asserts:
       - equal:
           path: spec.jobTemplate.spec.template.spec.containers[0].command
-          value: ["python", "-m", "app.scripts.dispatch_market_orders_scrape"]
+          value: ["python", "-m", "app.scripts.dispatch_market_prices_refresh"]
 
   - it: never restarts the pod on failure
     set:

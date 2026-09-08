@@ -4,7 +4,7 @@ from httpx import Response
 from mongomock_motor import AsyncMongoMockClient
 
 from app.core.config import Settings
-from app.db.rabbitmq import MARKET_ORDERS_SCRAPE_JOBS_QUEUE, decode_job
+from app.db.rabbitmq import MARKET_PRICES_REFRESH_JOBS_QUEUE, decode_price_refresh_job
 from tests.conftest import FakeRabbitMQConnection
 
 
@@ -99,7 +99,6 @@ async def test_refresh_queues_a_job_when_rabbitmq_enabled(
     assert response.json()["status"] == "queued"
     assert len(fake_rabbitmq.published) == 1
     routing_key, body = fake_rabbitmq.published[0]
-    assert routing_key == MARKET_ORDERS_SCRAPE_JOBS_QUEUE
-    job = decode_job(body)
-    assert job.kind == "prices"
-    assert job.scrape_run_id == response.json()["scrape_run_id"]
+    assert routing_key == MARKET_PRICES_REFRESH_JOBS_QUEUE
+    job = decode_price_refresh_job(body)
+    assert job.refresh_id == response.json()["refresh_id"]

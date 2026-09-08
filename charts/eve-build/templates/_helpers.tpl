@@ -1,7 +1,7 @@
 {{/*
 Name of the Secret holding the RabbitMQ AMQP connection URL - the existing secret when
 `rabbitmq.existingSecret` is set, otherwise the chart-managed one (see
-market-orders-rabbitmq-secret.yaml). Used by the KEDA TriggerAuthentication for the market-orders
+market-prices-rabbitmq-secret.yaml). Used by the KEDA TriggerAuthentication for the market-prices
 worker ScaledObjects.
 */}}
 {{- define "eve-build.rabbitmqSecretName" -}}
@@ -76,7 +76,7 @@ is supplied. Renders a single EnvVar entry at zero indentation.
 
 {{/*
 Shared container env vars for every eve-build workload (the app Deployment, plus the
-market-orders dispatch CronJob and fetch/write worker Deployments) - they all need the same
+market-prices dispatch CronJob and fetch/write worker Deployments) - they all need the same
 Mongo/Redis/RabbitMQ/ESI/SSO configuration. Renders a list of EnvVar entries at zero indentation;
 callers should `{{- include "eve-build.env" . | nindent 12 }}` under their container's `env:` key.
 */}}

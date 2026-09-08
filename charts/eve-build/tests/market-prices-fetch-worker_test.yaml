@@ -1,6 +1,6 @@
-suite: market-orders-fetch-worker
+suite: market-prices-fetch-worker
 templates:
-  - market-orders-fetch-worker.yaml
+  - market-prices-fetch-worker.yaml
 set:
   eveBuild.marketPrices.refreshApiKey: my-api-key
   eveBuild.session.secretKey: my-session-key
@@ -19,18 +19,18 @@ tests:
       - isKind:
           of: Deployment
 
-  - it: defaults to 3 replicas
+  - it: defaults to 1 replica
     set:
       rabbitmq.enabled: true
     asserts:
       - equal:
           path: spec.replicas
-          value: 3
+          value: 1
 
   - it: uses the configured replica count
     set:
       rabbitmq.enabled: true
-      eveBuild.marketOrders.fetchWorker.replicas: 5
+      eveBuild.marketPrices.fetchWorker.replicas: 5
     asserts:
       - equal:
           path: spec.replicas
@@ -42,4 +42,4 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].command
-          value: ["python", "-m", "app.scripts.market_orders_fetch_worker"]
+          value: ["python", "-m", "app.scripts.market_prices_fetch_worker"]

@@ -127,10 +127,10 @@ eveBuild:
 
   marketPrices:
     # -- Shared secret the on-demand `/market-prices/refresh` endpoint requires via the
-    # `X-Api-Key` header. Prices also refresh automatically every hour as part of the
-    # market_orders dispatch run below (when rabbitmq.enabled) - this endpoint is only for
-    # triggering an out-of-cycle refresh manually. Required unless `existingSecret` is set -
-    # generate one with `openssl rand -hex 32`.
+    # `X-Api-Key` header. Prices also refresh automatically every hour via the dispatch
+    # CronJob below (when rabbitmq.enabled) - this endpoint is only for triggering an
+    # out-of-cycle refresh manually. Required unless `existingSecret` is set - generate one
+    # with `openssl rand -hex 32`.
     refreshApiKey: ""
     # -- Name of an existing Secret holding the refresh API key, used
     # instead of `refreshApiKey` when set.
@@ -138,18 +138,14 @@ eveBuild:
     # -- Key within `existingSecret` holding the refresh API key.
     existingSecretKey: "apiKey"
 
-  marketOrders:
     # -- Only rendered when rabbitmq.enabled is true - the dispatch CronJob and fetch/write
     # worker Deployments below all publish/consume via RabbitMQ, so there's nothing to deploy
-    # without it. See docs for the full market-orders scrape pipeline.
+    # without it.
     #
-    # Cron schedule the dispatch CronJob uses to enqueue a scrape job for every public region,
-    # plus one market-price refresh job (see eveBuild.marketPrices above) - one coordinated
-    # "update the market" batch per run.
+    # Cron schedule the dispatch CronJob uses to enqueue an hourly price-refresh job.
     dispatchSchedule: "0 * * * *"
-    # -- KEDA settings for the fetch-worker's ScaledObject below - the write-worker isn't
-    # KEDA-managed (see writeWorker.replicas). Only used when `keda.enabled` is true - see the
-    # top-level `keda` section.
+    # -- Shared KEDA settings for both worker ScaledObjects below. Only used when
+    # `keda.enabled` is true - see the top-level `keda` section.
     keda:
       # -- How often (in seconds) KEDA polls RabbitMQ for the current queue length.
       pollingInterval: 15
@@ -158,9 +154,9 @@ eveBuild:
     fetchWorker:
       # -- Number of fetch-worker replicas. Ignored (and no `replicas` field rendered on the
       # Deployment) when `keda.enabled` is true - the ScaledObject's HPA owns replica count
-      # instead. Each consumes region scrape jobs from RabbitMQ and pulls that region's market
-      # orders from ESI - scale up to parallelize across regions.
-      replicas: 3
+      # instead. Fetches the current ESI price list and publishes it for the write-worker to
+      # persist.
+      replicas: 1
       # -- Resource requests and limits for the fetch-worker container.
       resources:
         requests:
@@ -171,18 +167,17 @@ eveBuild:
           memory: 128Mi
       keda:
         # -- Minimum fetch-worker replicas KEDA will scale down to - 0 lets it scale to zero
-        # between hourly dispatch runs once the scrape_jobs queue drains.
+        # between hourly dispatch runs once the refresh_jobs queue drains.
         minReplicas: 0
         # -- Maximum fetch-worker replicas KEDA will scale up to.
-        maxReplicas: 10
-        # -- Target number of queued scrape jobs per replica - KEDA scales so that
+        maxReplicas: 2
+        # -- Target number of queued refresh jobs per replica - KEDA scales so that
         # (queue length / queueLength) replicas are running, up to maxReplicas.
-        queueLength: 5
+        queueLength: 1
     writeWorker:
-      # -- Number of write-worker replicas. Always rendered - unlike the fetch-worker, this
-      # Deployment is never KEDA-managed: each replica discovers every region's results queue
-      # (plus the price-refresh queue) at startup and is a competing consumer on all of them, so
-      # scaling is a fixed replica count rather than queue-length-driven.
+      # -- Number of write-worker replicas. Ignored (and no `replicas` field rendered on the
+      # Deployment) when `keda.enabled` is true - the ScaledObject's HPA owns replica count
+      # instead. Persists refreshed prices into MongoDB.
       replicas: 1
       # -- Resource requests and limits for the write-worker container.
       resources:
@@ -192,6 +187,13 @@ eveBuild:
         limits:
           cpu: 250m
           memory: 256Mi
+      keda:
+        # -- Minimum write-worker replicas KEDA will scale down to.
+        minReplicas: 0
+        # -- Maximum write-worker replicas KEDA will scale up to.
+        maxReplicas: 2
+        # -- Target number of queued refresh results per replica.
+        queueLength: 1
 
   # -- Directory the bundled EVE SDE data is read from at migration time.
   # Only override this if you're mounting a custom SDE dataset.
@@ -511,10 +513,9 @@ rabbitmq:
   existingSecretKey: "url"
 
 keda:
-  # -- Autoscale the market-orders fetch-worker Deployment with a KEDA (https://keda.sh)
-  # ScaledObject driven by RabbitMQ queue length, instead of the fixed `fetchWorker.replicas`
-  # count. Requires the KEDA operator already installed in the cluster and
-  # `rabbitmq.enabled: true` - ignored otherwise. When enabled, the fetch-worker can scale to
-  # zero between dispatch runs and scale up automatically under backlog. The write-worker always
-  # runs `writeWorker.replicas` regardless of this setting - see writeWorker.replicas.
+  # -- Autoscale the market-prices fetch/write worker Deployments with KEDA
+  # (https://keda.sh) ScaledObjects driven by RabbitMQ queue length, instead of the fixed
+  # `fetchWorker.replicas`/`writeWorker.replicas` counts. Requires the KEDA operator already
+  # installed in the cluster and `rabbitmq.enabled: true` - ignored otherwise. When enabled,
+  # workers can scale to zero between dispatch runs and scale up automatically under backlog.
   enabled: false
