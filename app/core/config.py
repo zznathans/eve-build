@@ -22,7 +22,6 @@ class Settings(BaseSettings):
 
     market_prices_refresh_api_key: str = ""
 
-    market_orders_chunk_size: int = 2000
     market_orders_page_retry_max_attempts: int = 5
     market_orders_error_limit_threshold: int = 10
     market_orders_write_prefetch: int = 10

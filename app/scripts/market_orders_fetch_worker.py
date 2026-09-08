@@ -39,7 +39,16 @@ async def main() -> None:
         channel = await connection.channel()
         scrape_jobs_queue, _ = await declare_market_order_queues(channel)
 
+        # Fetch jobs fan out to per-region results queues (see
+        # app.db.rabbitmq.market_order_results_queue_name) that aren't declared upfront - the
+        # default exchange silently drops a publish to a queue name nothing has declared yet, so
+        # declare each one lazily on first use.
+        declared_queues: set[str] = set()
+
         async def publish(queue_name: str, body: bytes) -> None:
+            if queue_name not in declared_queues:
+                await channel.declare_queue(queue_name, durable=True)
+                declared_queues.add(queue_name)
             await channel.default_exchange.publish(
                 aio_pika.Message(body, delivery_mode=aio_pika.DeliveryMode.PERSISTENT),
                 routing_key=queue_name,
