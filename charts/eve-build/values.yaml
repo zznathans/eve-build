@@ -378,19 +378,32 @@ mongodb:
     # alongside the current ones, so dashboards built against the older exporter (e.g.
     # Percona's own Grafana dashboards) keep working unmodified.
     compatibleMode: true
-    # -- Pass --discovering-mode, which has the exporter discover every shard and replica
-    # set member behind the connection URI and scrape each of them individually, instead of
-    # only whichever member the driver happens to route the connection to. Matches
+    # -- Pass --discovering-mode, which lets the exporter enumerate every database and
+    # collection reachable through the connection URI (needed for collstats/indexstats)
+    # instead of only whichever ones the driver's current session happens to see. Matches
     # `--mongodb.global-conn-pool`/`--no-mongodb.direct-connect` above, which are needed
     # precisely because the URI here typically names multiple hosts (bundled
-    # MongoDBCommunity) or is SRV-discovered (DigitalOcean Managed MongoDB) - both are
-    # multi-member deployments where scraping only one member would miss the rest.
+    # MongoDBCommunity) or is SRV-discovered (DigitalOcean Managed MongoDB). Despite the
+    # name, this does NOT make serverStatus/dbStats-derived metrics (mongodb_ss_*,
+    # mongodb_dbstats_*) cover every replica set member - the Go driver still routes those
+    # commands to whichever single member it currently considers primary, same as without
+    # this flag. Only replSetGetStatus-derived metrics (mongodb_rs_members_*,
+    # mongodb_members_uptime) report on every member regardless, because that command
+    # itself returns all members' status. See `perNode` below for real per-member coverage.
     discoveringMode: true
+    # -- Run one additional mongodb_exporter as a sidecar in every mongod pod (direct-connected
+    # to its own `localhost:27017`), instead of - see `discoveringMode` above - relying on the
+    # single centralized Deployment for per-member serverStatus/dbStats/connection/opcounter
+    # data. Replaces the centralized Deployment and its Service/ServiceMonitor entirely (both
+    # are skipped when this is true) rather than running both, since the sidecars' data is a
+    # strict superset. Only applies when `mongodb.enabled` is true - there's no per-member pod
+    # template to attach a sidecar to for external/managed MongoDB.
+    perNode: false
     # -- Extra command-line flags appended after the collector flags this chart always passes
-    # (--mongodb.global-conn-pool, --no-mongodb.direct-connect, --collect-all,
-    # --discovering-mode if `discoveringMode` is true, and --compatible-mode if
-    # `compatibleMode` is true). The dedicated clusterMonitor user (or your own external one)
-    # needs the matching privileges for whatever you add here.
+    # (--mongodb.global-conn-pool if not `perNode`, --mongodb.direct-connect if `perNode`,
+    # --collect-all, --discovering-mode if `discoveringMode` is true and not `perNode`, and
+    # --compatible-mode if `compatibleMode` is true). The dedicated clusterMonitor user (or
+    # your own external one) needs the matching privileges for whatever you add here.
     extraArgs: []
     # -- Annotations on the mongodb-exporter pod. Defaults to the classic prometheus.io/scrape
     # annotation convention (unlike eveBuild.podAnnotations, which defaults empty) as a
@@ -413,7 +426,9 @@ mongodb:
     serviceMonitor:
       # -- Deploy a ServiceMonitor for Prometheus Operator to scrape the exporter
       # automatically. Requires the Prometheus Operator CRDs already installed in the
-      # cluster, and `mongodb.exporter.enabled`.
+      # cluster, and `mongodb.exporter.enabled`. Ignored when `perNode` is true - there's no
+      # single Service to target, since each mongod pod scrapes via its own annotations
+      # instead (see the sidecar's own prometheus.io/* annotations in mongodb.yaml).
       enabled: false
       # -- Scrape interval.
       interval: 30s
