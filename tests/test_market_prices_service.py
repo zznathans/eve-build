@@ -72,14 +72,13 @@ async def test_get_market_price_returns_none_when_missing(
 async def test_dispatch_refresh_enqueues_a_price_job() -> None:
     publisher = _RecordingPublisher()
 
-    scrape_run_id = await market_prices.dispatch_refresh(publisher)
+    refresh_id = await market_prices.dispatch_refresh(publisher)
 
     assert len(publisher.messages) == 1
     queue_name, body = publisher.messages[0]
-    assert queue_name == rabbitmq.MARKET_ORDERS_SCRAPE_JOBS_QUEUE
+    assert queue_name == rabbitmq.MARKET_PRICES_REFRESH_JOBS_QUEUE
     job = rabbitmq.decode_price_refresh_job(body)
-    assert job.kind == "prices"
-    assert job.scrape_run_id == scrape_run_id
+    assert job.refresh_id == refresh_id
 
 
 @respx.mock
@@ -91,21 +90,21 @@ async def test_run_price_refresh_job_publishes_a_result(test_settings: Settings)
         )
     )
     publisher = _RecordingPublisher()
-    job = rabbitmq.PriceRefreshJobMessage(scrape_run_id="run-1")
+    job = rabbitmq.PriceRefreshJobMessage(refresh_id="run-1")
 
     await market_prices.run_price_refresh_job(test_settings, job, publisher)
 
     assert len(publisher.messages) == 1
     queue_name, body = publisher.messages[0]
-    assert queue_name == rabbitmq.MARKET_PRICE_REFRESH_RESULTS_QUEUE
+    assert queue_name == rabbitmq.MARKET_PRICES_REFRESH_RESULTS_QUEUE
     result = rabbitmq.decode_price_refresh_result(body)
-    assert result.scrape_run_id == "run-1"
+    assert result.refresh_id == "run-1"
     assert result.prices == [{"type_id": 34, "adjusted_price": 5.12, "average_price": 5.5}]
 
 
 async def test_apply_price_refresh_upserts_prices(mongo_db: AsyncMongoMockClient) -> None:
     result = rabbitmq.PriceRefreshResultMessage(
-        scrape_run_id="run-1",
+        refresh_id="run-1",
         prices=[{"type_id": 34, "adjusted_price": 5.12, "average_price": 5.5}],
     )
 

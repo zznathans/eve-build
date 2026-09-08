@@ -1,9 +1,0 @@
-{
-  "collection": "market_orders",
-  "indexes": [
-    {
-      "name": "scraped_at",
-      "keys": [["scraped_at", 1], ["ttl", 7200]]
-    }
-  ]
-}

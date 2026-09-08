@@ -2,12 +2,12 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: {{ .Release.Name }}-market-orders-dispatch
+  name: {{ .Release.Name }}-market-prices-dispatch
   namespace: {{ .Release.Namespace }}
   annotations:
     argocd.argoproj.io/sync-wave: "1"
 spec:
-  schedule: {{ .Values.eveBuild.marketOrders.dispatchSchedule | quote }}
+  schedule: {{ .Values.eveBuild.marketPrices.dispatchSchedule | quote }}
   jobTemplate:
     spec:
       backoffLimit: 2
@@ -16,10 +16,10 @@ spec:
           serviceAccountName: {{ .Release.Name }}-serviceaccount
           restartPolicy: Never
           containers:
-            - name: market-orders-dispatch
+            - name: market-prices-dispatch
               image: {{ .Values.eveBuild.imageRepository }}:{{ .Values.eveBuild.imageTag | default .Chart.AppVersion }}
               imagePullPolicy: {{ .Values.eveBuild.imagePullPolicy }}
-              command: ["python", "-m", "app.scripts.dispatch_market_orders_scrape"]
+              command: ["python", "-m", "app.scripts.dispatch_market_prices_refresh"]
               env:
                 {{- include "eve-build.env" . | nindent 16 }}
               securityContext:

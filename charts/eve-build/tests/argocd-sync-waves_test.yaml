@@ -7,9 +7,9 @@ templates:
   - service-account.yaml
   - redis.yaml
   - mongodb.yaml
-  - market-orders-dispatch-cronjob.yaml
-  - market-orders-fetch-worker.yaml
-  - market-orders-write-worker.yaml
+  - market-prices-dispatch-cronjob.yaml
+  - market-prices-fetch-worker.yaml
+  - market-prices-write-worker.yaml
 set:
   eveBuild.marketPrices.refreshApiKey: my-api-key
   eveBuild.session.secretKey: my-session-key
@@ -55,17 +55,17 @@ tests:
           value: "0"
         template: service.yaml
 
-  - it: syncs cronjobs and market-orders workers after the app (wave 1)
+  - it: syncs cronjobs and market-prices workers after the app (wave 1)
     asserts:
       - equal:
           path: metadata.annotations["argocd.argoproj.io/sync-wave"]
           value: "1"
-        template: market-orders-dispatch-cronjob.yaml
+        template: market-prices-dispatch-cronjob.yaml
       - equal:
           path: metadata.annotations["argocd.argoproj.io/sync-wave"]
           value: "1"
-        template: market-orders-fetch-worker.yaml
+        template: market-prices-fetch-worker.yaml
       - equal:
           path: metadata.annotations["argocd.argoproj.io/sync-wave"]
           value: "1"
-        template: market-orders-write-worker.yaml
+        template: market-prices-write-worker.yaml

@@ -12,9 +12,6 @@ CHARACTERS_TRACKED = Gauge(
 MARKET_PRICES_CACHED = Gauge(
     "eve_build_market_prices_cached_total", "Market price entries cached in MongoDB"
 )
-MARKET_ORDERS_CACHED = Gauge(
-    "eve_build_market_orders_cached_total", "Market order entries cached in MongoDB"
-)
 PLANS_STORED = Gauge("eve_build_plans_stored_total", "Plan entries stored in MongoDB")
 SDE_BLUEPRINTS_CACHED = Gauge(
     "eve_build_sde_blueprints_cached_total", "SDE blueprint entries cached in MongoDB"
@@ -44,7 +41,6 @@ SYSTEM_SECURITY_CACHED = Gauge(
 async def refresh_db_gauges(db: AsyncIOMotorDatabase) -> None:
     CHARACTERS_TRACKED.set(await db.characters.count_documents({}))
     MARKET_PRICES_CACHED.set(await db.market_prices.count_documents({}))
-    MARKET_ORDERS_CACHED.set(await db.market_orders.count_documents({}))
     PLANS_STORED.set(await db.plans.count_documents({}))
     SDE_BLUEPRINTS_CACHED.set(await db.sde_blueprints.count_documents({}))
     SDE_CATEGORIES_CACHED.set(await db.sde_categories.count_documents({}))

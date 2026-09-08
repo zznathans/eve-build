@@ -1,6 +1,6 @@
-suite: market-orders-write-worker
+suite: market-prices-write-worker
 templates:
-  - market-orders-write-worker.yaml
+  - market-prices-write-worker.yaml
 set:
   eveBuild.marketPrices.refreshApiKey: my-api-key
   eveBuild.session.secretKey: my-session-key
@@ -30,20 +30,19 @@ tests:
   - it: uses the configured replica count
     set:
       rabbitmq.enabled: true
-      eveBuild.marketOrders.writeWorker.replicas: 2
+      eveBuild.marketPrices.writeWorker.replicas: 2
     asserts:
       - equal:
           path: spec.replicas
           value: 2
 
-  - it: still sets replicas when keda is enabled - the write-worker is never KEDA-managed
+  - it: omits replicas when keda is enabled - the ScaledObject's HPA owns replica count instead
     set:
       rabbitmq.enabled: true
       keda.enabled: true
     asserts:
-      - equal:
+      - notExists:
           path: spec.replicas
-          value: 1
 
   - it: runs the write worker script via the app image
     set:
@@ -51,4 +50,4 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].command
-          value: ["python", "-m", "app.scripts.market_orders_write_worker"]
+          value: ["python", "-m", "app.scripts.market_prices_write_worker"]

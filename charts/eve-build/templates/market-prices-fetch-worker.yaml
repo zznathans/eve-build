@@ -2,31 +2,33 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-market-orders-write-worker
+  name: {{ .Release.Name }}-market-prices-fetch-worker
   namespace: {{ .Release.Namespace }}
   annotations:
     argocd.argoproj.io/sync-wave: "1"
 spec:
   revisionHistoryLimit: 3
-  replicas: {{ .Values.eveBuild.marketOrders.writeWorker.replicas }}
+  {{- if not .Values.keda.enabled }}
+  replicas: {{ .Values.eveBuild.marketPrices.fetchWorker.replicas }}
+  {{- end }}
   selector:
     matchLabels:
-      app: {{ .Release.Name }}-market-orders-write-worker
+      app: {{ .Release.Name }}-market-prices-fetch-worker
   template:
     metadata:
       labels:
-        app: {{ .Release.Name }}-market-orders-write-worker
+        app: {{ .Release.Name }}-market-prices-fetch-worker
     spec:
       serviceAccountName: {{ .Release.Name }}-serviceaccount
       containers:
-        - name: market-orders-write-worker
+        - name: market-prices-fetch-worker
           image: {{ .Values.eveBuild.imageRepository }}:{{ .Values.eveBuild.imageTag | default .Chart.AppVersion }}
           imagePullPolicy: {{ .Values.eveBuild.imagePullPolicy }}
-          command: ["python", "-m", "app.scripts.market_orders_write_worker"]
+          command: ["python", "-m", "app.scripts.market_prices_fetch_worker"]
           env:
             {{- include "eve-build.env" . | nindent 12 }}
           securityContext:
             {{- toYaml .Values.eveBuild.securityContext | nindent 12 }}
           resources:
-            {{- toYaml .Values.eveBuild.marketOrders.writeWorker.resources | nindent 12 }}
+            {{- toYaml .Values.eveBuild.marketPrices.fetchWorker.resources | nindent 12 }}
 {{- end }}
