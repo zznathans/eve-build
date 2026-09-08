@@ -102,6 +102,12 @@ callers should `{{- include "eve-build.env" . | nindent 12 }}` under their conta
   value: {{ .Values.eveBuild.sdeDataDir | quote }}
 - name: RUN_MIGRATIONS_ON_STARTUP
   value: {{ .Values.eveBuild.runMigrationsOnStartup | quote }}
+- name: STARTUP_LOCK_TTL_SECONDS
+  value: {{ .Values.eveBuild.startupLockTtlSeconds | quote }}
+- name: STARTUP_LOCK_POLL_INTERVAL_SECONDS
+  value: {{ .Values.eveBuild.startupLockPollIntervalSeconds | quote }}
+- name: STARTUP_LOCK_WAIT_TIMEOUT_SECONDS
+  value: {{ .Values.eveBuild.startupLockWaitTimeoutSeconds | quote }}
 - name: REDIS_ENABLED
   value: {{ $redisEnabled | quote }}
 {{- if $redisEnabled }}

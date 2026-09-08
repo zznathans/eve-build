@@ -1,5 +1,6 @@
 import pytest
 from fastapi import FastAPI
+from mongomock_motor import AsyncMongoMockClient
 
 import app.main as main_module
 from app.core.config import get_settings
@@ -8,9 +9,12 @@ from app.core.config import get_settings
 class _FakeMongoClient:
     def __init__(self) -> None:
         self.closed = False
+        self._mock_client = AsyncMongoMockClient()
 
     def __getitem__(self, name: str) -> object:
-        return object()
+        # A real (mocked) database, not a bare object - startup_lock now touches it
+        # (create_index/find_one_and_update on "_locks") before run_migrations ever runs.
+        return self._mock_client[name]
 
     def close(self) -> None:
         self.closed = True

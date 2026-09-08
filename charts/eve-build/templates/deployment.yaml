@@ -57,10 +57,13 @@ spec:
             # /health only starts responding once the app finishes its startup lifespan,
             # which runs pending Mongo migrations first (e.g. backfilling every cached SDE
             # type document) - that can run well past a minute on a cold cache, so this needs
-            # enough headroom to outlast it. Readiness/liveness only start probing once this
-            # succeeds, so it doesn't slow down an already-migrated restart.
-            periodSeconds: 10
-            failureThreshold: 30
+            # enough headroom to outlast it. It also needs to outlast
+            # eveBuild.startupLockWaitTimeoutSeconds - a pod can block waiting for another
+            # pod's migration lock before running its own (fast, idempotent) pass. Readiness/
+            # liveness only start probing once this succeeds, so it doesn't slow down an
+            # already-migrated restart.
+            periodSeconds: {{ .Values.eveBuild.startupProbe.periodSeconds }}
+            failureThreshold: {{ .Values.eveBuild.startupProbe.failureThreshold }}
           readinessProbe:
             httpGet:
               path: /health

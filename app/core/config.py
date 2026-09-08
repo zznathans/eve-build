@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     mongo_indexes_dir: str = "app/config/mongo_indexes"
     sync_indexes_on_startup: bool = True
 
+    startup_lock_ttl_seconds: int = 480
+    startup_lock_poll_interval_seconds: float = 2.0
+    startup_lock_wait_timeout_seconds: int = 420
+
     redis_enabled: bool = False
     redis_url: str = "redis://localhost:6379/0"
     redis_cache_ttl_seconds: int = 60 * 60 * 24
