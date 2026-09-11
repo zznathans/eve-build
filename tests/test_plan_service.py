@@ -5,6 +5,7 @@ from mongomock_motor import AsyncMongoMockClient
 from app.services.plan import (
     add_job,
     create_plan,
+    delete_plan,
     get_plan,
     list_plans,
     remove_job,
@@ -286,3 +287,31 @@ async def test_list_plans_scopes_to_character_and_sorts_by_recency(
     plans = await list_plans(mongo_db, CHARACTER_ID)
 
     assert [doc["_id"] for doc in plans] == [first_id, second_id]
+
+
+async def test_delete_plan_removes_it(mongo_db: AsyncMongoMockClient) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+
+    result = await delete_plan(mongo_db, plan_id, CHARACTER_ID)
+
+    assert result is True
+    assert await get_plan(mongo_db, plan_id, CHARACTER_ID) is None
+
+
+async def test_delete_plan_returns_false_for_unknown_plan(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    result = await delete_plan(mongo_db, "nonexistent", CHARACTER_ID)
+
+    assert result is False
+
+
+async def test_delete_plan_returns_false_for_a_different_owner(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+
+    result = await delete_plan(mongo_db, plan_id, OTHER_CHARACTER_ID)
+
+    assert result is False
+    assert await get_plan(mongo_db, plan_id, CHARACTER_ID) is not None

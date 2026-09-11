@@ -46,6 +46,10 @@
       <div class="name">Plan</div>
       <div class="meta">saved {{ created_at }}</div>
     </div>
+    <a class="btn btn-danger" href="/plans/{{ plan_id }}/delete"
+      onclick="return confirm('Delete this plan? This cannot be undone.')">
+      Delete Plan
+    </a>
   </div>
   <a class="btn btn-primary plan-header-action" href="/build/items?plan_id={{ plan_id }}">Add to Plan</a>
 

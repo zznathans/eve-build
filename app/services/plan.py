@@ -135,6 +135,13 @@ async def remove_job(
     return True
 
 
+async def delete_plan(db: AsyncIOMotorDatabase, plan_id: str, character_id: int) -> bool:
+    """Deletes a whole plan, including all its jobs. Returns False if the plan doesn't exist
+    or isn't owned by this character (the route turns that into a 404)."""
+    result = await db.plans.delete_one({"_id": plan_id, "character_id": character_id})
+    return result.deleted_count > 0
+
+
 async def get_plan(
     db: AsyncIOMotorDatabase, plan_id: str, character_id: int
 ) -> dict[str, object] | None:

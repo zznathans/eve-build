@@ -589,3 +589,90 @@ async def test_plans_list_shows_saved_plans_with_links(
     assert "Test Ship" in response.text
     assert "1 job" in response.text
     assert f'href="/plans/{plan_id}"' in response.text
+
+
+@respx.mock
+async def test_delete_plan_requires_login(client: TestClient) -> None:
+    response = client.get("/plans/some-plan/delete")
+
+    assert response.status_code == 401
+
+
+@respx.mock
+async def test_delete_plan_deletes_it_and_redirects_to_the_list(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+
+    response = client.get(f"/plans/{plan_id}/delete", follow_redirects=False)
+
+    assert response.status_code in (302, 303, 307)
+    assert response.headers["location"] == "/plans"
+    assert await mongo_db.plans.find_one({"_id": plan_id}) is None
+
+
+@respx.mock
+async def test_delete_plan_404s_for_unknown_plan(
+    client: TestClient,
+    test_settings: Settings,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+
+    response = client.get("/plans/nonexistent/delete")
+
+    assert response.status_code == 404
+
+
+@respx.mock
+async def test_delete_plan_404s_for_a_different_owners_plan(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    await mongo_db.plans.insert_one(
+        {
+            "_id": "someone-elses-plan",
+            "character_id": CHARACTER_ID + 1,
+            "jobs": [],
+            "created_at": None,
+            "updated_at": None,
+        }
+    )
+    _log_in(client, test_settings, rsa_key_pair)
+
+    response = client.get("/plans/someone-elses-plan/delete")
+
+    assert response.status_code == 404
+    assert await mongo_db.plans.find_one({"_id": "someone-elses-plan"}) is not None
+
+
+@respx.mock
+async def test_plan_detail_shows_a_delete_plan_button(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+
+    response = client.get(f"/plans/{plan_id}")
+
+    assert response.status_code == 200
+    assert f'href="/plans/{plan_id}/delete"' in response.text

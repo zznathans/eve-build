@@ -2,6 +2,7 @@
 .short { color: #f0625a; }
 
 .plan-header-action { display: inline-block; margin-bottom: 1.5rem; }
+.header .btn-danger { margin-left: auto; }
 
 .qty-form {
   display: flex; align-items: center; gap: 0.6rem;

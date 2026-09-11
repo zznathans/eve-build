@@ -223,6 +223,20 @@ async def remove_job_from_plan(
     return RedirectResponse(f"/plans/{plan_id}")
 
 
+@router.get("/{plan_id}/delete")
+async def delete_plan(
+    plan_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> RedirectResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    deleted = await plan.delete_plan(db, plan_id, character.character_id)
+    if not deleted:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+    return RedirectResponse("/plans")
+
+
 @router.get("/{plan_id}", response_class=HTMLResponse)
 async def plan_detail(
     request: Request,
