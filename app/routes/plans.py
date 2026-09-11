@@ -198,11 +198,14 @@ async def add_from_blueprints(
     db: AsyncIOMotorDatabase = Depends(get_database),
     redis: Redis | None = Depends(get_redis),
     settings: Settings = Depends(get_settings),
+    search: str = Query(default=""),
 ) -> HTMLResponse:
     if not _PLAN_ID_RE.fullmatch(plan_id):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
     if await plan.get_plan(db, plan_id, character.character_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+
+    search_query = search.strip().lower()
 
     blueprints, corp_included = await character_data.get_merged_blueprints(
         db, redis, settings, character
@@ -215,8 +218,10 @@ async def add_from_blueprints(
                 "character": character,
                 "extra_stylesheets": _DETAIL_STYLE,
                 "plan_id": plan_id,
+                "search": search,
                 "corp_note": "",
                 "rows": [],
+                "blueprints_exist": False,
             },
         )
 
@@ -241,6 +246,9 @@ async def add_from_blueprints(
         product_type_id = sde_doc.get("product_type_id") if sde_doc is not None else None
         if product_type_id is None:
             continue
+        name = _name(bp.type_id)
+        if search_query and search_query not in name.lower():
+            continue
         product_quantity = cast(int, sde_doc.get("product_quantity", 1)) if sde_doc else 1
 
         is_copy = bp.quantity == -2 or bp.runs != -1
@@ -254,7 +262,7 @@ async def add_from_blueprints(
                 "product_type_id": product_type_id,
                 "product_quantity": product_quantity,
                 "icon_url": item_icon_url(cast(int, product_type_id)),
-                "name": _name(bp.type_id),
+                "name": name,
                 "status_text": status_text,
                 "me_gauge": gauge_cell_html(
                     100.0 * bp.material_efficiency / 10, f"{bp.material_efficiency}/10"
@@ -273,8 +281,10 @@ async def add_from_blueprints(
             "character": character,
             "extra_stylesheets": _DETAIL_STYLE,
             "plan_id": plan_id,
+            "search": search,
             "corp_note": "Includes corporation blueprints." if corp_included else "",
             "rows": rows,
+            "blueprints_exist": True,
         },
     )
 

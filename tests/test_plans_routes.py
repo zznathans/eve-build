@@ -240,6 +240,70 @@ async def test_add_from_blueprints_lists_owned_blueprints_with_checkboxes(
 
 
 @respx.mock
+async def test_add_from_blueprints_filters_by_search(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+    await _seed_buildable_module(mongo_db)
+    await mongo_db.sde_types.insert_many(
+        [
+            {"_id": SHIP_BLUEPRINT_TYPE_ID, "name": "Test Ship Blueprint", "published": True},
+            {"_id": MODULE_BLUEPRINT_TYPE_ID, "name": "Test Module Blueprint", "published": True},
+        ]
+    )
+    _mock_blueprints(
+        test_settings,
+        [
+            _blueprint_entry(1001, SHIP_BLUEPRINT_TYPE_ID),
+            _blueprint_entry(1002, MODULE_BLUEPRINT_TYPE_ID),
+        ],
+    )
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+
+    response = client.get(f"/plans/{plan_id}/add-from-blueprints", params={"search": "ship"})
+
+    assert response.status_code == 200
+    assert "Test Ship Blueprint" in response.text
+    assert "Test Module Blueprint" not in response.text
+    assert 'value="ship"' in response.text
+
+
+@respx.mock
+async def test_add_from_blueprints_shows_no_match_message_for_search_with_no_hits(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+    await mongo_db.sde_types.insert_one(
+        {"_id": SHIP_BLUEPRINT_TYPE_ID, "name": "Test Ship Blueprint", "published": True}
+    )
+    _mock_blueprints(test_settings, [_blueprint_entry(1001, SHIP_BLUEPRINT_TYPE_ID)])
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+
+    response = client.get(
+        f"/plans/{plan_id}/add-from-blueprints", params={"search": "nonexistent-item"}
+    )
+
+    assert response.status_code == 200
+    assert "No blueprints match your search." in response.text
+
+
+@respx.mock
 async def test_add_from_blueprints_404s_for_unknown_plan(
     client: TestClient,
     test_settings: Settings,

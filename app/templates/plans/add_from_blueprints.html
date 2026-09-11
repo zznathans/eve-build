@@ -10,6 +10,10 @@
   </div>
   {% if corp_note %}<p class="empty">{{ corp_note }}</p>{% endif %}
 
+  <form method="get" class="filters">
+    <input type="text" name="search" value="{{ search }}" placeholder="Search by name" autofocus>
+  </form>
+
   {% if rows %}
   <form method="get" action="/plans/{{ plan_id }}/add-from-blueprints/add">
     <div class="picker-actions">
@@ -50,6 +54,8 @@
       </tbody>
     </table>
   </form>
+  {% elif blueprints_exist %}
+  <p class="empty">No blueprints match your search.</p>
   {% else %}
   <p class="empty">No blueprints found.</p>
   {% endif %}

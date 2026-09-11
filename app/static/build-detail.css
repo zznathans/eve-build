@@ -1,6 +1,16 @@
 .page { max-width: 80rem; margin: 0 auto; padding: 2rem 1.5rem; }
 .short { color: #f0625a; }
 
+.filters {
+  display: flex; gap: 1.25rem; align-items: center;
+  margin-bottom: 1.25rem; font-size: 0.85rem; color: #9aa4b2;
+}
+.filters input[type="text"] {
+  background: #1a1d24; color: #e6e6e6;
+  border: 1px solid #2a2e37; border-radius: 6px; padding: 0.35rem 0.5rem;
+  font-size: 0.85rem; width: 20rem;
+}
+
 .plan-header-action { display: inline-block; margin-bottom: 1.5rem; }
 .header .btn-danger { margin-left: auto; }
 
