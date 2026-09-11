@@ -13,9 +13,9 @@ from app.db.mongo import get_database
 from app.db.redis import get_redis
 from app.deps import get_current_character
 from app.models.character import CharacterDocument
-from app.services import build_chain, plan, sde
+from app.services import build_chain, character_data, plan, sde
 from app.templating import templates
-from app.web import format_isk, item_icon_url
+from app.web import format_isk, format_number, gauge_cell_html, item_icon_url
 
 router = APIRouter(prefix="/plans", tags=["plans"])
 
@@ -28,12 +28,19 @@ def _format_timestamp(value: datetime) -> str:
     return value.replace(tzinfo=UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
-def _material_view(material: build_chain.RawMaterial) -> dict[str, object]:
+def _material_view(
+    material: build_chain.RawMaterial, owned_by_type_id: dict[int, int]
+) -> dict[str, object]:
+    owned = owned_by_type_id.get(material.type_id, 0)
+    percentage = 100.0 if material.quantity <= 0 else min(100.0, owned / material.quantity * 100)
     return {
         "icon_url": item_icon_url(material.type_id),
         "name": material.name,
         "quantity": material.quantity,
         "value": format_isk(material.quantity * material.unit_price),
+        "availability_html": gauge_cell_html(
+            percentage, f"{format_number(owned)}/{format_number(material.quantity)}"
+        ),
     }
 
 
@@ -293,6 +300,11 @@ async def plan_detail(
 
     combined_materials = build_chain.aggregate_raw_materials(resolutions)
 
+    assets, _ = await character_data.get_merged_assets(db, redis, settings, character)
+    owned_by_type_id: dict[int, int] = {}
+    for asset in assets:
+        owned_by_type_id[asset.type_id] = owned_by_type_id.get(asset.type_id, 0) + asset.quantity
+
     return templates.TemplateResponse(
         request,
         "plans/detail.html",
@@ -303,6 +315,6 @@ async def plan_detail(
             "created_at": _format_timestamp(cast(datetime, doc["created_at"])),
             "stats": stats,
             "jobs": jobs_view,
-            "combined_materials": [_material_view(m) for m in combined_materials],
+            "combined_materials": [_material_view(m, owned_by_type_id) for m in combined_materials],
         },
     )

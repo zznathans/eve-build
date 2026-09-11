@@ -1,6 +1,7 @@
 import respx
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
+from httpx import Response
 from mongomock_motor import AsyncMongoMockClient
 
 from app.core.config import Settings
@@ -29,6 +30,15 @@ async def _seed_buildable_module(mongo_db: AsyncMongoMockClient) -> None:
             "materials": [{"type_id": TRITANIUM_TYPE_ID, "quantity": 50}],
             "activity_id": 1,
         }
+    )
+
+
+def _mock_assets(settings: Settings, assets: list[dict[str, object]] | None = None) -> None:
+    """Mocks the plan detail page's owned-assets lookup (used for the Total Bill of
+    Materials availability gauge) - defaults to owning nothing, since most plan tests
+    don't care about asset availability."""
+    respx.get(f"{settings.esi_base_url}/characters/{CHARACTER_ID}/assets", params={"page": 1}).mock(
+        return_value=Response(200, headers={"X-Pages": "1"}, json=assets or [])
     )
 
 
@@ -218,6 +228,7 @@ async def test_set_job_build_flag_true_expands_the_material_into_a_build_step(
     rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
 ) -> None:
     _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
     await _seed_two_level_ship(mongo_db)
 
     create_response = client.get(
@@ -315,6 +326,7 @@ async def test_remove_job_deletes_it_and_redirects_back(
     rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
 ) -> None:
     _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
     await _seed_buildable_ship(mongo_db)
     await _seed_buildable_module(mongo_db)
 
@@ -384,6 +396,7 @@ async def test_plan_detail_hides_remove_button_for_the_only_job(
     rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
 ) -> None:
     _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
     await _seed_buildable_ship(mongo_db)
 
     create_response = client.get(
@@ -405,6 +418,7 @@ async def test_plan_detail_shows_remove_button_for_each_job_when_multiple_exist(
     rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
 ) -> None:
     _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
     await _seed_buildable_ship(mongo_db)
     await _seed_buildable_module(mongo_db)
 
@@ -428,6 +442,7 @@ async def test_plan_detail_shows_editable_quantity_for_each_job(
     rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
 ) -> None:
     _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
     await _seed_buildable_ship(mongo_db)
 
     create_response = client.get(
@@ -453,6 +468,7 @@ async def test_plan_detail_renders_a_single_job(
     rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
 ) -> None:
     _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
     await _seed_buildable_ship(mongo_db)
 
     create_response = client.get(
@@ -480,6 +496,20 @@ async def test_plan_detail_aggregates_totals_and_materials_across_jobs(
     rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
 ) -> None:
     _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(
+        test_settings,
+        [
+            {
+                "item_id": 1,
+                "type_id": TRITANIUM_TYPE_ID,
+                "location_id": 60003760,
+                "location_flag": "Hangar",
+                "location_type": "station",
+                "quantity": 50,
+                "is_singleton": False,
+            }
+        ],
+    )
     await _seed_buildable_ship(mongo_db)  # Ship needs 100 Tritanium
     await _seed_buildable_module(mongo_db)  # Module needs 50 Tritanium/run
 
@@ -501,6 +531,9 @@ async def test_plan_detail_aggregates_totals_and_materials_across_jobs(
     assert "Total Bill of Materials" in response.text
     assert response.text.count("Tritanium") >= 3  # once per job card, plus the combined panel
     assert "<td>200</td>" in response.text
+    # Owns 50 of the 200 needed - a 25% availability gauge on the combined panel.
+    assert "50/200" in response.text
+    assert 'style="width: 25%' in response.text
 
 
 @respx.mock
@@ -665,6 +698,7 @@ async def test_plan_detail_shows_a_delete_plan_button(
     rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
 ) -> None:
     _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
     await _seed_buildable_ship(mongo_db)
 
     create_response = client.get(
