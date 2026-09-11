@@ -4,6 +4,15 @@
 
 {% macro materials_table(materials) %}
 <table class="mini-table">
+  <thead>
+    <tr>
+      <th>Item</th>
+      <th>Quantity</th>
+      <th>Value</th>
+      <th>Availability</th>
+      <th></th>
+    </tr>
+  </thead>
   <tbody>
     {% for material in materials %}
     <tr>

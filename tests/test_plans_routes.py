@@ -512,6 +512,10 @@ async def test_plan_detail_renders_a_single_job(
     assert (
         '<a class="btn btn-primary plan-header-action" href="/build/items?plan_id=' in response.text
     )
+    assert "<th>Item</th>" in response.text
+    assert "<th>Quantity</th>" in response.text
+    assert "<th>Value</th>" in response.text
+    assert "<th>Availability</th>" in response.text
 
 
 @respx.mock
