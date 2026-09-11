@@ -46,6 +46,7 @@
 .job-panel-header .item-line .item-value { text-align: left; }
 .job-panel-header .item-line a { color: #4c8bf5; text-decoration: none; }
 .job-panel-header .item-line a:hover { text-decoration: underline; }
+.job-blueprint-efficiency { display: inline-flex; gap: 0.6rem; margin-left: 0.6rem; vertical-align: middle; }
 .job-panel-tables { display: flex; gap: 2rem; flex-wrap: wrap; align-items: flex-start; }
 .job-panel-column { flex: 1 1 20rem; min-width: 18rem; }
 
