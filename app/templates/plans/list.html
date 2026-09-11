@@ -15,6 +15,12 @@
             onerror="this.style.visibility='hidden'">
           {{ p.name }}
         </div>
+        <div class="plan-job-icons">
+          {% for job_icon in p.job_icons %}
+          <img src="{{ job_icon.icon_url }}" alt="{{ job_icon.name }}" title="{{ job_icon.name }}"
+            onerror="this.style.visibility='hidden'">
+          {% endfor %}
+        </div>
         <div class="item-line"><span>Jobs</span>
           <span class="item-value">{{ p.jobs_text }}</span></div>
         <div class="item-line"><span>Created</span>

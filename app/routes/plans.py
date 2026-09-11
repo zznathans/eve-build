@@ -121,10 +121,12 @@ async def list_plans(
             {"character": character, "extra_stylesheets": _LIST_STYLE, "plans": []},
         )
 
-    target_type_ids = {
-        cast(int, cast(list[dict[str, object]], doc["jobs"])[0]["target_type_id"]) for doc in plans
+    all_target_type_ids = {
+        cast(int, job["target_type_id"])
+        for doc in plans
+        for job in cast(list[dict[str, object]], doc["jobs"])
     }
-    type_docs = await sde.type_docs(db, redis, settings, target_type_ids)
+    type_docs = await sde.type_docs(db, redis, settings, all_target_type_ids)
 
     def _name(type_id: int) -> str:
         return str(type_docs.get(type_id, {}).get("name", f"Type {type_id}"))
@@ -141,6 +143,13 @@ async def list_plans(
                 "name": _name(first_job_type_id),
                 "jobs_text": jobs_text,
                 "created_at": _format_timestamp(cast(datetime, doc["created_at"])),
+                "job_icons": [
+                    {
+                        "icon_url": item_icon_url(cast(int, job["target_type_id"])),
+                        "name": _name(cast(int, job["target_type_id"])),
+                    }
+                    for job in jobs
+                ],
             }
         )
 

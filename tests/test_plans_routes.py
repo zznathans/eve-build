@@ -5,6 +5,7 @@ from httpx import Response
 from mongomock_motor import AsyncMongoMockClient
 
 from app.core.config import Settings
+from app.web import item_icon_url
 from tests.test_blueprints_routes import CHARACTER_ID, _log_in
 from tests.test_build_routes import (
     COMPONENT_TYPE_ID,
@@ -681,6 +682,32 @@ async def test_plans_list_shows_saved_plans_with_links(
     assert "Test Ship" in response.text
     assert "1 job" in response.text
     assert f'href="/plans/{plan_id}"' in response.text
+
+
+@respx.mock
+async def test_plans_list_shows_an_icon_for_each_jobs_output_item(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
+    await _seed_buildable_ship(mongo_db)
+    await _seed_buildable_module(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    client.get(f"/plans/{plan_id}/add-job", params={"type_id": MODULE_TYPE_ID, "qty": 1})
+
+    response = client.get("/plans")
+
+    assert response.status_code == 200
+    assert response.text.count(f'src="{item_icon_url(SHIP_TYPE_ID)}"') == 2  # header + job icon
+    assert f'src="{item_icon_url(MODULE_TYPE_ID)}"' in response.text
+    assert 'title="Test Module"' in response.text
 
 
 @respx.mock
