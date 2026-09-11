@@ -81,6 +81,39 @@ async def update_job_quantity(
     return result.matched_count > 0
 
 
+async def update_job_build_flag(
+    db: AsyncIOMotorDatabase,
+    plan_id: str,
+    character_id: int,
+    job_id: str,
+    type_id: int,
+    build: bool,
+) -> bool:
+    """Adds or removes one material from a job's build_set in place - the rest of the job
+    (target_type_id, target_quantity) is unchanged, so its BuildResolution just
+    re-expands/re-collapses that branch next time the plan is viewed. Returns False if the
+    plan/job doesn't exist or isn't owned by this character (the route turns that into a
+    404)."""
+    doc = await db.plans.find_one({"_id": plan_id, "character_id": character_id})
+    if doc is None:
+        return False
+    jobs = cast(list[dict[str, object]], doc["jobs"])
+    job = next((j for j in jobs if j["job_id"] == job_id), None)
+    if job is None:
+        return False
+    build_set = set(cast(list[int], job["build_set"]))
+    if build:
+        build_set.add(type_id)
+    else:
+        build_set.discard(type_id)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    result = await db.plans.update_one(
+        {"_id": plan_id, "character_id": character_id, "jobs.job_id": job_id},
+        {"$set": {"jobs.$.build_set": sorted(build_set), "updated_at": now}},
+    )
+    return result.matched_count > 0
+
+
 async def remove_job(
     db: AsyncIOMotorDatabase, plan_id: str, character_id: int, job_id: str
 ) -> bool | None:

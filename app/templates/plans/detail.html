@@ -14,6 +14,25 @@
       </td>
       <td>{{ material.quantity }}</td>
       <td>{{ material.value }}</td>
+      <td>{% if material.flag_html %}{{ material.flag_html | safe }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+{% macro steps_table(steps) %}
+<table class="mini-table">
+  <tbody>
+    {% for step in steps %}
+    <tr>
+      <td>
+        <img class="mini-table-icon" src="{{ step.icon_url }}" alt=""
+          onerror="this.style.visibility='hidden'">
+        {{ step.name }}
+      </td>
+      <td>{{ step.runs }} runs</td>
+      <td>{{ step.buy_flag_html | safe }}</td>
     </tr>
     {% endfor %}
   </tbody>
@@ -69,6 +88,11 @@
             <span class="item-value">{{ job.cost }}</span></div>
           <div class="item-line"><span>Profit</span>
             <span class="item-value">{{ job.profit }}</span></div>
+          {% if job.steps %}
+          <div class="item-subhead">Build steps</div>
+          {{ steps_table(job.steps) }}
+          {% endif %}
+          <div class="item-subhead">Materials</div>
           {{ materials_table(job.materials) }}
         </div>
       </div>

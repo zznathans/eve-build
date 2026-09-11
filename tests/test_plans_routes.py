@@ -202,6 +202,105 @@ async def test_update_job_quantity_404s_for_unknown_job(
 
 
 @respx.mock
+async def test_set_job_build_flag_requires_login(client: TestClient) -> None:
+    response = client.get(
+        "/plans/some-plan/jobs/some-job/build-set", params={"type_id": 1, "build": "true"}
+    )
+
+    assert response.status_code == 401
+
+
+@respx.mock
+async def test_set_job_build_flag_true_expands_the_material_into_a_build_step(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_two_level_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    job_id = doc["jobs"][0]["job_id"]
+
+    response = client.get(
+        f"/plans/{plan_id}/jobs/{job_id}/build-set",
+        params={"type_id": COMPONENT_TYPE_ID, "build": "true"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code in (302, 303, 307)
+    assert response.headers["location"] == f"/plans/{plan_id}"
+    updated = await mongo_db.plans.find_one({"_id": plan_id})
+    assert updated is not None
+    assert updated["jobs"][0]["build_set"] == [COMPONENT_TYPE_ID]
+
+    detail_response = client.get(f"/plans/{plan_id}")
+    assert detail_response.status_code == 200
+    assert "Test Component" in detail_response.text
+
+
+@respx.mock
+async def test_set_job_build_flag_false_collapses_the_step_back_to_a_material(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_two_level_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create",
+        params={"type_id": SHIP_TYPE_ID, "qty": 1, "build": str(COMPONENT_TYPE_ID)},
+        follow_redirects=False,
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    job_id = doc["jobs"][0]["job_id"]
+
+    response = client.get(
+        f"/plans/{plan_id}/jobs/{job_id}/build-set",
+        params={"type_id": COMPONENT_TYPE_ID, "build": "false"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code in (302, 303, 307)
+    updated = await mongo_db.plans.find_one({"_id": plan_id})
+    assert updated is not None
+    assert updated["jobs"][0]["build_set"] == []
+
+
+@respx.mock
+async def test_set_job_build_flag_404s_for_unknown_job(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+
+    response = client.get(
+        f"/plans/{plan_id}/jobs/nonexistent/build-set",
+        params={"type_id": TRITANIUM_TYPE_ID, "build": "true"},
+    )
+
+    assert response.status_code == 404
+
+
+@respx.mock
 async def test_remove_job_requires_login(client: TestClient) -> None:
     response = client.get("/plans/some-plan/jobs/some-job/delete")
 

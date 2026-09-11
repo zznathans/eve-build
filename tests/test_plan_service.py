@@ -8,6 +8,7 @@ from app.services.plan import (
     get_plan,
     list_plans,
     remove_job,
+    update_job_build_flag,
     update_job_quantity,
 )
 
@@ -127,6 +128,83 @@ async def test_update_job_quantity_returns_false_for_a_different_owner(
     unchanged = await get_plan(mongo_db, plan_id, CHARACTER_ID)
     assert unchanged is not None
     assert unchanged["jobs"][0]["target_quantity"] == 1
+
+
+async def test_update_job_build_flag_adds_material_to_build_set(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+    original = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert original is not None
+    job_id = original["jobs"][0]["job_id"]
+
+    result = await update_job_build_flag(mongo_db, plan_id, CHARACTER_ID, job_id, 57478, True)
+
+    assert result is True
+    doc = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert doc is not None
+    assert doc["jobs"][0]["build_set"] == [57478]
+    assert doc["updated_at"] >= original["updated_at"]
+
+
+async def test_update_job_build_flag_removes_material_from_build_set(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset({57478, 57479}))
+    doc = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert doc is not None
+    job_id = doc["jobs"][0]["job_id"]
+
+    result = await update_job_build_flag(mongo_db, plan_id, CHARACTER_ID, job_id, 57478, False)
+
+    assert result is True
+    updated = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert updated is not None
+    assert updated["jobs"][0]["build_set"] == [57479]
+
+
+async def test_update_job_build_flag_only_changes_the_targeted_job(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+    job_id = await add_job(mongo_db, plan_id, CHARACTER_ID, MODULE_TYPE_ID, 2, frozenset())
+    assert job_id is not None
+
+    result = await update_job_build_flag(mongo_db, plan_id, CHARACTER_ID, job_id, 57478, True)
+
+    assert result is True
+    doc = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert doc is not None
+    assert doc["jobs"][0]["build_set"] == []
+    assert doc["jobs"][1]["build_set"] == [57478]
+
+
+async def test_update_job_build_flag_returns_false_for_unknown_job(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+
+    result = await update_job_build_flag(
+        mongo_db, plan_id, CHARACTER_ID, "nonexistent", 57478, True
+    )
+
+    assert result is False
+
+
+async def test_update_job_build_flag_returns_false_for_a_different_owner(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+    doc = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert doc is not None
+    job_id = doc["jobs"][0]["job_id"]
+
+    result = await update_job_build_flag(mongo_db, plan_id, OTHER_CHARACTER_ID, job_id, 57478, True)
+
+    assert result is False
+    unchanged = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert unchanged is not None
+    assert unchanged["jobs"][0]["build_set"] == []
 
 
 async def test_remove_job_deletes_it_when_another_job_remains(

@@ -1,5 +1,6 @@
 import re
 from datetime import UTC, datetime
+from html import escape
 from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -34,6 +35,55 @@ def _material_view(material: build_chain.RawMaterial) -> dict[str, object]:
         "quantity": material.quantity,
         "value": format_isk(material.quantity * material.unit_price),
     }
+
+
+def _job_flag_context(
+    resolution: build_chain.BuildResolution, *, plan_id: str, job_id: str
+) -> dict[str, list[dict[str, object]]]:
+    """Materials + build steps for one job on the plan detail page, with clickable
+    Build/Buy toggle links that edit the job's stored build_set in place (mirrors
+    app/routes/build.py's _build_resolution_context, but persists to the plan instead of
+    round-tripping through query-string state)."""
+
+    def _toggle_href(type_id: int, *, build: bool) -> str:
+        flag = "true" if build else "false"
+        return f"/plans/{plan_id}/jobs/{job_id}/build-set?type_id={type_id}&build={flag}"
+
+    def _buy_flag(step_type_id: int) -> str:
+        if step_type_id == resolution.target_type_id:
+            return ""
+        href = escape(_toggle_href(step_type_id, build=False))
+        return f'<a class="flag flag-buy-toggle" href="{href}">Buy</a>'
+
+    steps = [
+        {
+            "icon_url": item_icon_url(step.type_id),
+            "name": step.name,
+            "buy_flag_html": _buy_flag(step.type_id),
+            "runs": step.runs,
+            "quantity_needed": step.quantity_needed,
+        }
+        for step in resolution.steps
+    ]
+
+    def _material_flag(material: build_chain.RawMaterial) -> str:
+        if not material.is_buildable:
+            return '<span class="flag flag-buy">Bought</span>'
+        href = escape(_toggle_href(material.type_id, build=True))
+        return f'<a class="flag flag-build" href="{href}">Build</a>'
+
+    materials = [
+        {
+            "icon_url": item_icon_url(material.type_id),
+            "name": material.name,
+            "quantity": material.quantity,
+            "value": format_isk(material.quantity * material.unit_price),
+            "flag_html": _material_flag(material),
+        }
+        for material in resolution.raw_materials
+    ]
+
+    return {"materials": materials, "steps": steps}
 
 
 @router.get("", response_class=HTMLResponse)
@@ -133,6 +183,27 @@ async def update_job_quantity(
     return RedirectResponse(f"/plans/{safe_plan_id}")
 
 
+@router.get("/{plan_id}/jobs/{job_id}/build-set")
+async def set_job_build_flag(
+    plan_id: str,
+    job_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    type_id: int = Query(...),
+    build: bool = Query(...),
+) -> RedirectResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    if not _PLAN_ID_RE.fullmatch(job_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid job id")
+    updated = await plan.update_job_build_flag(
+        db, plan_id, character.character_id, job_id, type_id, build
+    )
+    if not updated:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan or job not found")
+    return RedirectResponse(f"/plans/{plan_id}")
+
+
 @router.get("/{plan_id}/jobs/{job_id}/delete")
 async def remove_job_from_plan(
     plan_id: str,
@@ -189,17 +260,20 @@ async def plan_detail(
 
     jobs_view = []
     for job, resolution in zip(jobs, resolutions, strict=True):
+        job_id = cast(str, job["job_id"])
         job_profit = resolution.output_value - resolution.raw_material_cost
+        flag_context = _job_flag_context(resolution, plan_id=plan_id, job_id=job_id)
         jobs_view.append(
             {
-                "job_id": job["job_id"],
+                "job_id": job_id,
                 "icon_url": item_icon_url(resolution.target_type_id),
                 "target_name": resolution.target_name,
                 "target_quantity": resolution.target_quantity,
                 "delete_enabled": len(jobs) > 1,
                 "cost": format_isk(resolution.raw_material_cost),
                 "profit": format_isk(job_profit),
-                "materials": [_material_view(m) for m in resolution.raw_materials],
+                "materials": flag_context["materials"],
+                "steps": flag_context["steps"],
             }
         )
 
