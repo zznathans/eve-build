@@ -296,6 +296,40 @@ async def test_add_jobs_from_blueprints_adds_selected_jobs_and_redirects(
     assert len(doc["jobs"]) == 3  # the plan's original job, plus ship + module added here
     added_target_type_ids = {job["target_type_id"] for job in doc["jobs"][1:]}
     assert added_target_type_ids == {SHIP_TYPE_ID, MODULE_TYPE_ID}
+    added_by_target = {job["target_type_id"]: job for job in doc["jobs"][1:]}
+    assert added_by_target[SHIP_TYPE_ID]["blueprint_item_id"] == 1001
+    assert added_by_target[MODULE_TYPE_ID]["blueprint_item_id"] == 1002
+
+
+@respx.mock
+async def test_add_jobs_from_blueprints_defaults_quantity_to_runs_remaining_for_a_copy(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+    await _seed_buildable_module(mongo_db)
+    copy_entry = {**_blueprint_entry(1001, MODULE_BLUEPRINT_TYPE_ID), "quantity": -2, "runs": 5}
+    _mock_blueprints(test_settings, [copy_entry])
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+
+    client.get(
+        f"/plans/{plan_id}/add-from-blueprints/add",
+        params={"item_id": 1001},
+        follow_redirects=False,
+    )
+
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    added_job = doc["jobs"][1]
+    # Module produces 1/run and the copy has 5 runs left -> default to using them all.
+    assert added_job["target_quantity"] == 5
 
 
 @respx.mock
@@ -335,6 +369,50 @@ async def test_add_jobs_from_blueprints_404s_for_unknown_plan(
     response = client.get("/plans/nonexistent/add-from-blueprints/add", params={"item_id": 1001})
 
     assert response.status_code == 404
+
+
+@respx.mock
+async def test_plan_detail_shows_blueprint_link_reduced_materials_and_build_time(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
+    await _seed_buildable_ship(mongo_db)
+    await mongo_db.sde_types.insert_one(
+        {"_id": SHIP_BLUEPRINT_TYPE_ID, "name": "Test Ship Blueprint", "published": True}
+    )
+    await mongo_db.sde_blueprints.update_one(
+        {"_id": SHIP_BLUEPRINT_TYPE_ID}, {"$set": {"manufacturing_time_seconds": 1000}}
+    )
+    # 10% ME, 20% TE.
+    _mock_blueprints(test_settings, [_blueprint_entry(1001, SHIP_BLUEPRINT_TYPE_ID)])
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    client.get(
+        f"/plans/{plan_id}/add-from-blueprints/add",
+        params={"item_id": 1001},
+        follow_redirects=False,
+    )
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    job_id = doc["jobs"][1]["job_id"]
+
+    response = client.get(f"/plans/{plan_id}")
+
+    assert response.status_code == 200
+    assert 'href="/blueprints/1001"' in response.text
+    assert "Test Ship Blueprint" in response.text
+    assert f'action="/plans/{plan_id}/jobs/{job_id}/update"' in response.text
+    # Base recipe needs 100 Tritanium/run; 10% ME -> 90.
+    assert "<td>90</td>" in response.text
+    # 1 run * 1000s * (1 - 20%) = 800s -> 13m.
+    assert "13m" in response.text
 
 
 @respx.mock

@@ -114,6 +114,16 @@
               <span class="item-value">{{ job.cost }}</span></div>
             <div class="item-line"><span>Profit</span>
               <span class="item-value">{{ job.profit }}</span></div>
+            {% if job.build_time %}
+            <div class="item-line"><span>Build time</span>
+              <span class="item-value">{{ job.build_time }}</span></div>
+            {% endif %}
+            {% if job.blueprint_link %}
+            <div class="item-line"><span>Blueprint</span>
+              <span class="item-value">
+                <a href="/blueprints/{{ job.blueprint_link.item_id }}">{{ job.blueprint_link.name }}</a>
+              </span></div>
+            {% endif %}
           </div>
           <div class="job-panel-tables">
             {% if job.steps %}

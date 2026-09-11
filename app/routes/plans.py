@@ -14,8 +14,9 @@ from app.db.redis import get_redis
 from app.deps import get_current_character
 from app.models.character import CharacterDocument
 from app.services import build_chain, character_data, plan, sde
+from app.services.esi import BlueprintEntry
 from app.templating import templates
-from app.web import format_isk, format_number, gauge_cell_html, item_icon_url
+from app.web import format_duration, format_isk, format_number, gauge_cell_html, item_icon_url
 
 router = APIRouter(prefix="/plans", tags=["plans"])
 
@@ -305,13 +306,18 @@ async def add_jobs_from_blueprints(
             if product_type_id is None:
                 continue
             product_quantity = cast(int, sde_doc.get("product_quantity", 1)) if sde_doc else 1
+            # bp.runs is -1 for an original (unlimited runs, so there's no "remaining runs"
+            # total to default to - just one run's worth); for a copy it's the number of
+            # runs left on it, so default to using up all of them.
+            runs_remaining = bp.runs if bp.runs != -1 else 1
             await plan.add_job(
                 db,
                 plan_id,
                 character.character_id,
                 cast(int, product_type_id),
-                product_quantity,
+                product_quantity * runs_remaining,
                 frozenset(),
+                blueprint_item_id=bp.item_id,
             )
 
     return RedirectResponse(f"/plans/{plan_id}")
@@ -419,17 +425,41 @@ async def plan_detail(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
 
     jobs = cast(list[dict[str, object]], doc["jobs"])
-    resolutions = [
-        await build_chain.resolve_build_chain(
-            db,
-            redis,
-            settings,
-            cast(int, job["target_type_id"]),
-            cast(int, job["target_quantity"]),
-            frozenset(cast(list[int], job["build_set"])),
+
+    job_blueprint_item_ids = {
+        cast(int, job["blueprint_item_id"]) for job in jobs if job.get("blueprint_item_id")
+    }
+    blueprint_link_by_item_id: dict[int, dict[str, object]] = {}
+    blueprint_by_item_id: dict[int, BlueprintEntry] = {}
+    if job_blueprint_item_ids:
+        owned_blueprints, _ = await character_data.get_merged_blueprints(
+            db, redis, settings, character
         )
-        for job in jobs
-    ]
+        blueprint_by_item_id = {
+            bp.item_id: bp for bp in owned_blueprints if bp.item_id in job_blueprint_item_ids
+        }
+        blueprint_type_docs = await sde.type_docs(
+            db, redis, settings, {bp.type_id for bp in blueprint_by_item_id.values()}
+        )
+        for item_id, bp in blueprint_by_item_id.items():
+            name = str(blueprint_type_docs.get(bp.type_id, {}).get("name", f"Type {bp.type_id}"))
+            blueprint_link_by_item_id[item_id] = {"item_id": item_id, "name": name}
+
+    resolutions = []
+    for job in jobs:
+        blueprint = blueprint_by_item_id.get(cast(int, job.get("blueprint_item_id") or 0))
+        resolutions.append(
+            await build_chain.resolve_build_chain(
+                db,
+                redis,
+                settings,
+                cast(int, job["target_type_id"]),
+                cast(int, job["target_quantity"]),
+                frozenset(cast(list[int], job["build_set"])),
+                material_efficiency=blueprint.material_efficiency if blueprint else 0,
+                time_efficiency=blueprint.time_efficiency if blueprint else 0,
+            )
+        )
 
     total_cost = sum(resolution.raw_material_cost for resolution in resolutions)
     total_value = sum(resolution.output_value for resolution in resolutions)
@@ -459,6 +489,7 @@ async def plan_detail(
         flag_context = _job_flag_context(
             resolution, plan_id=plan_id, job_id=job_id, pi_type_ids=pi_type_ids
         )
+        blueprint_item_id = job.get("blueprint_item_id")
         jobs_view.append(
             {
                 "job_id": job_id,
@@ -468,9 +499,19 @@ async def plan_detail(
                 "delete_enabled": len(jobs) > 1,
                 "cost": format_isk(resolution.raw_material_cost),
                 "profit": format_isk(job_profit),
+                "build_time": (
+                    format_duration(resolution.build_time_seconds)
+                    if resolution.build_time_seconds
+                    else None
+                ),
                 "materials": flag_context["materials"],
                 "pi_materials": flag_context["pi_materials"],
                 "steps": flag_context["steps"],
+                "blueprint_link": (
+                    blueprint_link_by_item_id.get(cast(int, blueprint_item_id))
+                    if blueprint_item_id
+                    else None
+                ),
             }
         )
 

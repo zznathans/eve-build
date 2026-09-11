@@ -85,6 +85,22 @@ def format_isk(value: float) -> str:
     return f"{value:,.0f} ISK"
 
 
+def format_duration(seconds: float) -> str:
+    total_seconds = max(0, round(seconds))
+    days, remainder = divmod(total_seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes = remainder // 60
+
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes or not parts:
+        parts.append(f"{minutes}m")
+    return " ".join(parts)
+
+
 def security_status_color(security_status: float) -> str:
     # Standard EVE Online security-status color bands, high-sec (green/cyan) down to
     # low-sec (orange) - null-sec and negative statuses fall through to the same red.

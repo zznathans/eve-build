@@ -6,13 +6,17 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 
 def _job_doc(
-    target_type_id: int, target_quantity: int, build_set: frozenset[int]
+    target_type_id: int,
+    target_quantity: int,
+    build_set: frozenset[int],
+    blueprint_item_id: int | None = None,
 ) -> dict[str, object]:
     return {
         "job_id": str(uuid.uuid4()),
         "target_type_id": target_type_id,
         "target_quantity": target_quantity,
         "build_set": sorted(build_set),
+        "blueprint_item_id": blueprint_item_id,
     }
 
 
@@ -49,10 +53,13 @@ async def add_job(
     target_type_id: int,
     target_quantity: int,
     build_set: frozenset[int],
+    blueprint_item_id: int | None = None,
 ) -> str | None:
-    """Appends a job to an existing plan. Returns the new job's id, or None if the plan
-    doesn't exist or isn't owned by this character (the route turns that into a 404)."""
-    job = _job_doc(target_type_id, target_quantity, build_set)
+    """Appends a job to an existing plan. blueprint_item_id records which owned blueprint
+    (if any) the job was added from, so the plan page can link back to it. Returns the new
+    job's id, or None if the plan doesn't exist or isn't owned by this character (the route
+    turns that into a 404)."""
+    job = _job_doc(target_type_id, target_quantity, build_set, blueprint_item_id)
     now = datetime.now(UTC).replace(tzinfo=None)
     result = await db.plans.update_one(
         {"_id": plan_id, "character_id": character_id},

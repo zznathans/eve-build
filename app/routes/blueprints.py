@@ -15,6 +15,7 @@ from app.db.redis import get_redis
 from app.deps import get_current_character, get_current_character_optional
 from app.models.character import CharacterDocument
 from app.services import character_data, locations, market_prices, sde
+from app.services.build_chain import material_quantity_per_run
 from app.services.locations import resolve_container_chain as _resolve_container_chain
 from app.templating import templates
 from app.web import (
@@ -33,10 +34,6 @@ _DETAIL_STYLE = ["/static/card.css", "/static/blueprints-detail.css"]
 
 
 _REACTIONS_ACTIVITY_ID = 11
-
-
-def _material_quantity_per_run(base_quantity: int, material_efficiency: int) -> int:
-    return max(1, math.ceil(base_quantity * (1 - material_efficiency / 100)))
 
 
 def _tech_level_label(is_reaction: bool, is_t2: bool) -> str:
@@ -467,7 +464,7 @@ async def blueprint_detail(
     price_by_type_id: dict[int, dict[str, object]] = {cast(int, p["_id"]): p for p in prices}
 
     cost_per_run = sum(
-        _material_quantity_per_run(m["quantity"], blueprint.material_efficiency)
+        material_quantity_per_run(m["quantity"], blueprint.material_efficiency)
         * market_prices.unit_price(price_by_type_id.get(m["type_id"]))
         for m in materials
     )
@@ -496,7 +493,7 @@ async def blueprint_detail(
     global_buildable = math.inf
     for material in materials:
         type_id = material["type_id"]
-        needed = _material_quantity_per_run(material["quantity"], blueprint.material_efficiency)
+        needed = material_quantity_per_run(material["quantity"], blueprint.material_efficiency)
         on_site_have = on_site_totals.get(type_id, 0)
         global_have = global_totals.get(type_id, 0)
         on_site_buildable = min(on_site_buildable, on_site_have // needed)

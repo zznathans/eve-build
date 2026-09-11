@@ -11,10 +11,17 @@ from app.services import market_prices, sde
 _MAX_DEPTH = 15
 
 
+def material_quantity_per_run(base_quantity: int, material_efficiency: int) -> int:
+    """Applies a blueprint's material efficiency (0-10, a percentage) to one material's base
+    per-run quantity - EVE always rounds the reduced amount up, and never below 1."""
+    return max(1, math.ceil(base_quantity * (1 - material_efficiency / 100)))
+
+
 @dataclass
 class _Recipe:
     output_quantity: int
     materials: list[dict[str, int]]
+    time_seconds: float
 
 
 async def _recipe_for_product(db: AsyncIOMotorDatabase, product_type_id: int) -> _Recipe | None:
@@ -26,6 +33,7 @@ async def _recipe_for_product(db: AsyncIOMotorDatabase, product_type_id: int) ->
         return _Recipe(
             output_quantity=cast(int, blueprint.get("product_quantity", 1)),
             materials=cast(list[dict[str, int]], blueprint["materials"]),
+            time_seconds=float(cast(int, blueprint.get("manufacturing_time_seconds", 0))),
         )
 
     schematic = await sde.planet_schematic_for_product(db, product_type_id)
@@ -34,6 +42,7 @@ async def _recipe_for_product(db: AsyncIOMotorDatabase, product_type_id: int) ->
         return _Recipe(
             output_quantity=output["quantity"],
             materials=cast(list[dict[str, int]], schematic["inputs"]),
+            time_seconds=float(cast(int, schematic.get("cycle_time_seconds", 0))),
         )
 
     return None
@@ -68,6 +77,7 @@ class BuildResolution:
     raw_materials: list[RawMaterial]
     raw_material_cost: float
     output_value: float
+    build_time_seconds: float | None = None
 
 
 async def resolve_build_chain(
@@ -77,6 +87,8 @@ async def resolve_build_chain(
     target_type_id: int,
     target_quantity: int = 1,
     build_set: frozenset[int] = frozenset(),
+    material_efficiency: int = 0,
+    time_efficiency: int = 0,
 ) -> BuildResolution:
     """Walks the build chain for a target item: finds the recipe that produces it - a
     manufacturing blueprint/reaction formula, or (for planetary commodities) a planetary
@@ -86,10 +98,15 @@ async def resolve_build_chain(
     components across the whole tree (a component needed by two different branches gets a
     single combined step, not two). Anything not expanded is a raw/purchasable material - the
     current leaves of the chain - whether or not it has a recipe of its own, so the caller can
-    tell which leaves could be toggled to "build" versus which can only be bought."""
+    tell which leaves could be toggled to "build" versus which can only be bought.
+
+    material_efficiency/time_efficiency come from one specific owned blueprint (0 if the job
+    isn't linked to one) and only apply to the target's own recipe - deeper sub-components are
+    each their own blueprint with their own (unknown, so assumed 0%) efficiency."""
     steps_by_type_id: dict[int, BuildStep] = {}
     raw_totals: dict[int, int] = {}
     raw_buildable: dict[int, bool] = {}
+    target_build_time_seconds = 0.0
 
     current_level: dict[int, int] = {target_type_id: target_quantity}
     depth = 0
@@ -110,6 +127,16 @@ async def resolve_build_chain(
 
             product_quantity = recipe.output_quantity
             materials = recipe.materials
+            if type_id == target_type_id and material_efficiency:
+                materials = [
+                    {
+                        "type_id": material["type_id"],
+                        "quantity": material_quantity_per_run(
+                            material["quantity"], material_efficiency
+                        ),
+                    }
+                    for material in materials
+                ]
             additional_runs = max(1, math.ceil(quantity / product_quantity))
 
             step = steps_by_type_id.get(type_id)
@@ -124,6 +151,8 @@ async def resolve_build_chain(
                 steps_by_type_id[type_id] = step
             step.quantity_needed += quantity
             step.runs += additional_runs
+            if type_id == target_type_id:
+                target_build_time_seconds += recipe.time_seconds * additional_runs
 
             for material in materials:
                 material_type_id = material["type_id"]
@@ -170,6 +199,10 @@ async def resolve_build_chain(
     # thing that consumes them), by minimum distance from the raw materials.
     ordered_steps = _topological_order(target_type_id, steps_by_type_id)
 
+    build_time_seconds = (
+        target_build_time_seconds * (1 - time_efficiency / 100) if target_step is not None else None
+    )
+
     return BuildResolution(
         target_type_id=target_type_id,
         target_name=_name(target_type_id),
@@ -179,6 +212,7 @@ async def resolve_build_chain(
         raw_materials=raw_materials,
         raw_material_cost=raw_material_cost,
         output_value=output_value,
+        build_time_seconds=build_time_seconds,
     )
 
 

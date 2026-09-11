@@ -1,7 +1,11 @@
 from mongomock_motor import AsyncMongoMockClient
 
 from app.core.config import Settings
-from app.services.build_chain import aggregate_raw_materials, resolve_build_chain
+from app.services.build_chain import (
+    aggregate_raw_materials,
+    material_quantity_per_run,
+    resolve_build_chain,
+)
 
 TRITANIUM_TYPE_ID = 34
 PYERITE_TYPE_ID = 35
@@ -415,3 +419,100 @@ async def test_aggregate_raw_materials_sums_a_shared_material_across_resolutions
     assert by_type_id[TRITANIUM_TYPE_ID] == 150  # 100 (ship) + 50 (module)
     assert by_type_id[PYERITE_TYPE_ID] == 20  # only needed by the module
     assert len(combined) == 2
+
+
+def test_material_quantity_per_run_applies_efficiency_and_rounds_up() -> None:
+    assert material_quantity_per_run(100, 10) == 90
+    assert material_quantity_per_run(100, 0) == 100
+    # Rounds up, and never below 1 even at very high efficiency on a tiny base quantity.
+    assert material_quantity_per_run(3, 10) == 3  # ceil(2.7) == 3
+    assert material_quantity_per_run(1, 10) == 1
+
+
+async def test_resolve_build_chain_applies_material_efficiency_to_the_targets_own_recipe(
+    mongo_db: AsyncMongoMockClient, test_settings: Settings
+) -> None:
+    await _seed_names(
+        mongo_db,
+        [
+            {"_id": SHIP_TYPE_ID, "name": "Test Ship", "published": True},
+            {"_id": COMPONENT_TYPE_ID, "name": "Test Component", "published": True},
+            {"_id": TRITANIUM_TYPE_ID, "name": "Tritanium", "published": True},
+        ],
+    )
+    await mongo_db.sde_blueprints.insert_many(
+        [
+            {
+                "_id": SHIP_BLUEPRINT_TYPE_ID,
+                "product_type_id": SHIP_TYPE_ID,
+                "product_quantity": 1,
+                "materials": [{"type_id": COMPONENT_TYPE_ID, "quantity": 100}],
+                "activity_id": 1,
+            },
+            {
+                "_id": COMPONENT_BLUEPRINT_TYPE_ID,
+                "product_type_id": COMPONENT_TYPE_ID,
+                "product_quantity": 1,
+                "materials": [{"type_id": TRITANIUM_TYPE_ID, "quantity": 100}],
+                "activity_id": 1,
+            },
+        ]
+    )
+
+    resolution = await resolve_build_chain(
+        mongo_db,
+        None,
+        test_settings,
+        SHIP_TYPE_ID,
+        1,
+        frozenset({COMPONENT_TYPE_ID}),
+        material_efficiency=10,
+    )
+
+    # The ship's own recipe (100 Component/run) is reduced by 10% ME -> 90.
+    component_step = next(s for s in resolution.steps if s.type_id == SHIP_TYPE_ID)
+    assert component_step.materials[COMPONENT_TYPE_ID] == 90
+    # The component's own (unrelated, un-owned) blueprint keeps its base 0% ME quantity.
+    raw_by_type_id = {m.type_id: m.quantity for m in resolution.raw_materials}
+    assert raw_by_type_id[TRITANIUM_TYPE_ID] == 9000  # 90 component runs * 100 Tritanium/run
+
+
+async def test_resolve_build_chain_computes_build_time_with_time_efficiency(
+    mongo_db: AsyncMongoMockClient, test_settings: Settings
+) -> None:
+    await _seed_names(
+        mongo_db,
+        [
+            {"_id": SHIP_TYPE_ID, "name": "Test Ship", "published": True},
+            {"_id": TRITANIUM_TYPE_ID, "name": "Tritanium", "published": True},
+        ],
+    )
+    await mongo_db.sde_blueprints.insert_one(
+        {
+            "_id": SHIP_BLUEPRINT_TYPE_ID,
+            "product_type_id": SHIP_TYPE_ID,
+            "product_quantity": 1,
+            "materials": [{"type_id": TRITANIUM_TYPE_ID, "quantity": 100}],
+            "manufacturing_time_seconds": 1000,
+            "activity_id": 1,
+        }
+    )
+
+    resolution = await resolve_build_chain(
+        mongo_db, None, test_settings, SHIP_TYPE_ID, 3, time_efficiency=20
+    )
+
+    # 3 runs * 1000s/run * (1 - 20%) = 2400s.
+    assert resolution.build_time_seconds == 2400.0
+
+
+async def test_resolve_build_chain_build_time_is_none_when_not_buildable(
+    mongo_db: AsyncMongoMockClient, test_settings: Settings
+) -> None:
+    await _seed_names(
+        mongo_db, [{"_id": TRITANIUM_TYPE_ID, "name": "Tritanium", "published": True}]
+    )
+
+    resolution = await resolve_build_chain(mongo_db, None, test_settings, TRITANIUM_TYPE_ID, 1)
+
+    assert resolution.build_time_seconds is None
