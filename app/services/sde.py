@@ -6,6 +6,10 @@ from redis.asyncio import Redis
 from app.core.config import Settings
 from app.services import cache
 
+# SDE category_ids for planetary interaction materials: raw P0 resources ("Planetary
+# Resources") plus the processed P1-P4 commodities ("Planetary Commodities").
+PLANETARY_MATERIAL_CATEGORY_IDS = frozenset({42, 43})
+
 
 def cache_key(prefix: str, value: int) -> str:
     return f"{prefix}:{value}"

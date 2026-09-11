@@ -8,6 +8,7 @@ from app.core.config import Settings
 from tests.test_blueprints_routes import CHARACTER_ID, _log_in
 from tests.test_build_routes import (
     COMPONENT_TYPE_ID,
+    SHIP_BLUEPRINT_TYPE_ID,
     SHIP_TYPE_ID,
     TRITANIUM_TYPE_ID,
     _seed_buildable_ship,
@@ -28,6 +29,31 @@ async def _seed_buildable_module(mongo_db: AsyncMongoMockClient) -> None:
             "product_type_id": MODULE_TYPE_ID,
             "product_quantity": 1,
             "materials": [{"type_id": TRITANIUM_TYPE_ID, "quantity": 50}],
+            "activity_id": 1,
+        }
+    )
+
+
+WATER_TYPE_ID = 3645  # a P1 planetary commodity - see sde.PLANETARY_MATERIAL_CATEGORY_IDS
+
+
+async def _seed_ship_with_pi_material(mongo_db: AsyncMongoMockClient) -> None:
+    await mongo_db.sde_types.insert_many(
+        [
+            {"_id": SHIP_TYPE_ID, "name": "Test Ship", "published": True},
+            {"_id": TRITANIUM_TYPE_ID, "name": "Tritanium", "published": True},
+            {"_id": WATER_TYPE_ID, "name": "Water", "published": True, "category_id": 43},
+        ]
+    )
+    await mongo_db.sde_blueprints.insert_one(
+        {
+            "_id": SHIP_BLUEPRINT_TYPE_ID,
+            "product_type_id": SHIP_TYPE_ID,
+            "product_quantity": 1,
+            "materials": [
+                {"type_id": TRITANIUM_TYPE_ID, "quantity": 100},
+                {"type_id": WATER_TYPE_ID, "quantity": 20},
+            ],
             "activity_id": 1,
         }
     )
@@ -534,6 +560,33 @@ async def test_plan_detail_aggregates_totals_and_materials_across_jobs(
     # Owns 50 of the 200 needed - a 25% availability gauge on the combined panel.
     assert "50/200" in response.text
     assert 'style="width: 25%' in response.text
+
+
+@respx.mock
+async def test_plan_detail_splits_pi_materials_into_their_own_section(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
+    await _seed_ship_with_pi_material(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+
+    response = client.get(f"/plans/{plan_id}")
+
+    assert response.status_code == 200
+    assert "Total Planetary Materials" in response.text
+    assert "Planetary Materials" in response.text  # per-job subhead
+    # Water only appears in the planetary sections, Tritanium only in the regular ones -
+    # each shows up once per job card and once in its combined panel.
+    assert response.text.count("Water") == 2
+    assert response.text.count("Tritanium") == 2
 
 
 @respx.mock

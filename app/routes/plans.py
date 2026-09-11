@@ -45,12 +45,17 @@ def _material_view(
 
 
 def _job_flag_context(
-    resolution: build_chain.BuildResolution, *, plan_id: str, job_id: str
+    resolution: build_chain.BuildResolution,
+    *,
+    plan_id: str,
+    job_id: str,
+    pi_type_ids: frozenset[int],
 ) -> dict[str, list[dict[str, object]]]:
     """Materials + build steps for one job on the plan detail page, with clickable
     Build/Buy toggle links that edit the job's stored build_set in place (mirrors
     app/routes/build.py's _build_resolution_context, but persists to the plan instead of
-    round-tripping through query-string state)."""
+    round-tripping through query-string state). Planetary materials are split into their
+    own list so the page can show them as a separate category from other raw materials."""
 
     def _toggle_href(type_id: int, *, build: bool) -> str:
         flag = "true" if build else "false"
@@ -79,18 +84,22 @@ def _job_flag_context(
         href = escape(_toggle_href(material.type_id, build=True))
         return f'<a class="flag flag-build" href="{href}">Build</a>'
 
-    materials = [
-        {
+    materials: list[dict[str, object]] = []
+    pi_materials: list[dict[str, object]] = []
+    for material in resolution.raw_materials:
+        view = {
             "icon_url": item_icon_url(material.type_id),
             "name": material.name,
             "quantity": material.quantity,
             "value": format_isk(material.quantity * material.unit_price),
             "flag_html": _material_flag(material),
         }
-        for material in resolution.raw_materials
-    ]
+        if material.type_id in pi_type_ids:
+            pi_materials.append(view)
+        else:
+            materials.append(view)
 
-    return {"materials": materials, "steps": steps}
+    return {"materials": materials, "pi_materials": pi_materials, "steps": steps}
 
 
 @router.get("", response_class=HTMLResponse)
@@ -279,11 +288,25 @@ async def plan_detail(
         "job_count": str(len(resolutions)),
     }
 
+    combined_materials = build_chain.aggregate_raw_materials(resolutions)
+
+    all_material_type_ids = {
+        material.type_id for resolution in resolutions for material in resolution.raw_materials
+    }
+    type_docs = await sde.type_docs(db, redis, settings, all_material_type_ids)
+    pi_type_ids = frozenset(
+        type_id
+        for type_id in all_material_type_ids
+        if type_docs.get(type_id, {}).get("category_id") in sde.PLANETARY_MATERIAL_CATEGORY_IDS
+    )
+
     jobs_view = []
     for job, resolution in zip(jobs, resolutions, strict=True):
         job_id = cast(str, job["job_id"])
         job_profit = resolution.output_value - resolution.raw_material_cost
-        flag_context = _job_flag_context(resolution, plan_id=plan_id, job_id=job_id)
+        flag_context = _job_flag_context(
+            resolution, plan_id=plan_id, job_id=job_id, pi_type_ids=pi_type_ids
+        )
         jobs_view.append(
             {
                 "job_id": job_id,
@@ -294,16 +317,24 @@ async def plan_detail(
                 "cost": format_isk(resolution.raw_material_cost),
                 "profit": format_isk(job_profit),
                 "materials": flag_context["materials"],
+                "pi_materials": flag_context["pi_materials"],
                 "steps": flag_context["steps"],
             }
         )
-
-    combined_materials = build_chain.aggregate_raw_materials(resolutions)
 
     assets, _ = await character_data.get_merged_assets(db, redis, settings, character)
     owned_by_type_id: dict[int, int] = {}
     for asset in assets:
         owned_by_type_id[asset.type_id] = owned_by_type_id.get(asset.type_id, 0) + asset.quantity
+
+    combined_materials_view = []
+    combined_pi_materials_view = []
+    for material in combined_materials:
+        view = _material_view(material, owned_by_type_id)
+        if material.type_id in pi_type_ids:
+            combined_pi_materials_view.append(view)
+        else:
+            combined_materials_view.append(view)
 
     return templates.TemplateResponse(
         request,
@@ -315,6 +346,7 @@ async def plan_detail(
             "created_at": _format_timestamp(cast(datetime, doc["created_at"])),
             "stats": stats,
             "jobs": jobs_view,
-            "combined_materials": [_material_view(m, owned_by_type_id) for m in combined_materials],
+            "combined_materials": combined_materials_view,
+            "combined_pi_materials": combined_pi_materials_view,
         },
     )

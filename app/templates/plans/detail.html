@@ -68,6 +68,13 @@
   </div>
   {% endif %}
 
+  {% if combined_pi_materials %}
+  <div class="section-box">
+    <h2>Total Planetary Materials</h2>
+    {{ materials_table(combined_pi_materials) }}
+  </div>
+  {% endif %}
+
   {% if jobs %}
   <div class="section-box">
     <h2>Jobs</h2>
@@ -96,6 +103,10 @@
           {% if job.steps %}
           <div class="item-subhead">Build steps</div>
           {{ steps_table(job.steps) }}
+          {% endif %}
+          {% if job.pi_materials %}
+          <div class="item-subhead">Planetary Materials</div>
+          {{ materials_table(job.pi_materials) }}
           {% endif %}
           <div class="item-subhead">Materials</div>
           {{ materials_table(job.materials) }}

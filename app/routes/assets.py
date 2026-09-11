@@ -40,10 +40,6 @@ _DATACORE_GROUP_ID = 333
 # SDE group_id for the eight standard invention decryptors (Accelerant, Symmetry, ...).
 _DECRYPTOR_GROUP_ID = 1304
 
-# SDE category_ids for planetary interaction materials: raw P0 resources ("Planetary
-# Resources") plus the processed P1-P4 commodities ("Planetary Commodities").
-_PLANETARY_MATERIAL_CATEGORY_IDS = frozenset({42, 43})
-
 
 def _group_matcher(group_id: int) -> Callable[[dict[str, object]], bool]:
     return lambda type_doc: type_doc.get("group_id") == group_id
@@ -71,7 +67,7 @@ def _is_uncompressed_ore(type_doc: dict[str, object]) -> bool:
 
 _CATEGORIES: dict[str, Callable[[dict[str, object]], bool]] = {
     "Minerals": _group_matcher(_MINERAL_GROUP_ID),
-    "Planetary Materials": _categories_matcher(_PLANETARY_MATERIAL_CATEGORY_IDS),
+    "Planetary Materials": _categories_matcher(sde.PLANETARY_MATERIAL_CATEGORY_IDS),
     "Compressed Ore": _is_compressed_ore,
     "Ore": _is_uncompressed_ore,
     "Datacores": _group_matcher(_DATACORE_GROUP_ID),
