@@ -530,7 +530,16 @@ async def plan_detail(
         )
         for item_id, bp in blueprint_by_item_id.items():
             name = str(blueprint_type_docs.get(bp.type_id, {}).get("name", f"Type {bp.type_id}"))
-            blueprint_link_by_item_id[item_id] = {"item_id": item_id, "name": name}
+            blueprint_link_by_item_id[item_id] = {
+                "item_id": item_id,
+                "name": name,
+                "me_gauge": gauge_cell_html(
+                    100.0 * bp.material_efficiency / 10, f"{bp.material_efficiency}/10"
+                ),
+                "te_gauge": gauge_cell_html(
+                    100.0 * bp.time_efficiency / 20, f"{bp.time_efficiency}/20"
+                ),
+            }
 
     resolutions = []
     for job in jobs:

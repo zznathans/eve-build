@@ -543,6 +543,9 @@ async def test_plan_detail_shows_blueprint_link_reduced_materials_and_build_time
     assert "<td>90</td>" in response.text
     # 1 run * 1000s * (1 - 20%) = 800s -> 13m.
     assert "13m" in response.text
+    # The linked blueprint's own ME/TE are shown on the job panel too.
+    assert "10/10" in response.text
+    assert "20/20" in response.text
 
 
 @respx.mock

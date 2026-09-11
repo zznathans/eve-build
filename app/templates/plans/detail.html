@@ -122,6 +122,10 @@
               <span class="item-value">
                 <a href="/blueprints/{{ job.blueprint_link.item_id }}">{{ job.blueprint_link.name }}</a>
               </span></div>
+            <div class="item-line"><span>ME</span>
+              <span class="item-value">{{ job.blueprint_link.me_gauge | safe }}</span></div>
+            <div class="item-line"><span>TE</span>
+              <span class="item-value">{{ job.blueprint_link.te_gauge | safe }}</span></div>
             {% endif %}
           </div>
           <div class="job-panel-tables">
