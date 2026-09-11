@@ -11,9 +11,9 @@ h1 { font-size: 1.4rem; margin: 0 0 1.5rem; }
 }
 .item-grid { margin-bottom: 1.5rem; }
 
-.plan-job-icons { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.plan-job-icons { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.15rem; }
 .plan-job-icons img {
-  width: 24px; height: 24px; border-radius: 4px;
+  width: 48px; height: 48px; border-radius: 6px;
   border: 1px solid #2a2e37; flex-shrink: 0;
 }
 

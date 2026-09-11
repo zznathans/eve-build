@@ -4,6 +4,13 @@
 .plan-header-action { display: inline-block; margin-bottom: 1.5rem; }
 .header .btn-danger { margin-left: auto; }
 
+.rename-form { display: flex; align-items: center; gap: 0.5rem; }
+.rename-form input[type="text"] {
+  background: #1a1d24; color: #e6e6e6;
+  border: 1px solid #2a2e37; border-radius: 6px; padding: 0.3rem 0.6rem;
+  font-size: 1.1rem; font-weight: 600; width: 20rem; max-width: 100%;
+}
+
 .qty-form {
   display: flex; align-items: center; gap: 0.6rem;
   margin-top: 0.4rem; font-size: 0.85rem; color: #9aa4b2;

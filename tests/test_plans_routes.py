@@ -679,7 +679,8 @@ async def test_plans_list_shows_saved_plans_with_links(
     response = client.get("/plans")
 
     assert response.status_code == 200
-    assert "Test Ship" in response.text
+    assert "Test Ship" in response.text  # job icon tooltip, not the plan's own name
+    assert "Untitled Plan" in response.text
     assert "1 job" in response.text
     assert f'href="/plans/{plan_id}"' in response.text
 
@@ -705,9 +706,61 @@ async def test_plans_list_shows_an_icon_for_each_jobs_output_item(
     response = client.get("/plans")
 
     assert response.status_code == 200
-    assert response.text.count(f'src="{item_icon_url(SHIP_TYPE_ID)}"') == 2  # header + job icon
+    assert f'src="{item_icon_url(SHIP_TYPE_ID)}"' in response.text
     assert f'src="{item_icon_url(MODULE_TYPE_ID)}"' in response.text
     assert 'title="Test Module"' in response.text
+
+
+@respx.mock
+async def test_rename_plan_requires_login(client: TestClient) -> None:
+    response = client.get("/plans/some-plan/rename", params={"name": "New Name"})
+
+    assert response.status_code == 401
+
+
+@respx.mock
+async def test_rename_plan_sets_the_name_and_redirects_back(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+
+    response = client.get(
+        f"/plans/{plan_id}/rename",
+        params={"name": "  Alpha Fleet Doctrine  "},
+        follow_redirects=False,
+    )
+
+    assert response.status_code in (302, 303, 307)
+    assert response.headers["location"] == f"/plans/{plan_id}"
+    updated = await mongo_db.plans.find_one({"_id": plan_id})
+    assert updated is not None
+    assert updated["name"] == "Alpha Fleet Doctrine"  # whitespace trimmed
+
+    detail_response = client.get(f"/plans/{plan_id}")
+    assert 'value="Alpha Fleet Doctrine"' in detail_response.text
+
+
+@respx.mock
+async def test_rename_plan_404s_for_unknown_plan(
+    client: TestClient,
+    test_settings: Settings,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+
+    response = client.get("/plans/nonexistent/rename", params={"name": "New Name"})
+
+    assert response.status_code == 404
 
 
 @respx.mock

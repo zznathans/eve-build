@@ -33,6 +33,7 @@ async def create_plan(
         {
             "_id": plan_id,
             "character_id": character_id,
+            "name": "",
             "jobs": [_job_doc(target_type_id, target_quantity, build_set)],
             "created_at": now,
             "updated_at": now,
@@ -133,6 +134,17 @@ async def remove_job(
         {"$pull": {"jobs": {"job_id": job_id}}, "$set": {"updated_at": now}},
     )
     return True
+
+
+async def rename_plan(db: AsyncIOMotorDatabase, plan_id: str, character_id: int, name: str) -> bool:
+    """Sets a plan's display name. Returns False if the plan doesn't exist or isn't owned
+    by this character (the route turns that into a 404)."""
+    now = datetime.now(UTC).replace(tzinfo=None)
+    result = await db.plans.update_one(
+        {"_id": plan_id, "character_id": character_id},
+        {"$set": {"name": name, "updated_at": now}},
+    )
+    return result.matched_count > 0
 
 
 async def delete_plan(db: AsyncIOMotorDatabase, plan_id: str, character_id: int) -> bool:

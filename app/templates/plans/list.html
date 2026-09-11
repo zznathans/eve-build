@@ -10,17 +10,13 @@
     {% for p in plans %}
     <a class="item-card" href="/plans/{{ p.plan_id }}">
       <div class="item-card-content">
-        <div class="item-title">
-          <img class="item-title-icon" src="{{ p.icon_url }}" alt=""
-            onerror="this.style.visibility='hidden'">
-          {{ p.name }}
-        </div>
         <div class="plan-job-icons">
           {% for job_icon in p.job_icons %}
           <img src="{{ job_icon.icon_url }}" alt="{{ job_icon.name }}" title="{{ job_icon.name }}"
             onerror="this.style.visibility='hidden'">
           {% endfor %}
         </div>
+        <div class="item-title">{{ p.name }}</div>
         <div class="item-line"><span>Jobs</span>
           <span class="item-value">{{ p.jobs_text }}</span></div>
         <div class="item-line"><span>Created</span>

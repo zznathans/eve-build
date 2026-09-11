@@ -134,13 +134,11 @@ async def list_plans(
     plans_view = []
     for doc in plans:
         jobs = cast(list[dict[str, object]], doc["jobs"])
-        first_job_type_id = cast(int, jobs[0]["target_type_id"])
         jobs_text = "1 job" if len(jobs) == 1 else f"{len(jobs)} jobs"
         plans_view.append(
             {
                 "plan_id": doc["_id"],
-                "icon_url": item_icon_url(first_job_type_id),
-                "name": _name(first_job_type_id),
+                "name": str(doc.get("name") or "") or "Untitled Plan",
                 "jobs_text": jobs_text,
                 "created_at": _format_timestamp(cast(datetime, doc["created_at"])),
                 "job_icons": [
@@ -250,6 +248,21 @@ async def remove_job_from_plan(
     return RedirectResponse(f"/plans/{plan_id}")
 
 
+@router.get("/{plan_id}/rename")
+async def rename_plan(
+    plan_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    name: str = Query(default="", max_length=100),
+) -> RedirectResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    renamed = await plan.rename_plan(db, plan_id, character.character_id, name.strip())
+    if not renamed:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+    return RedirectResponse(f"/plans/{plan_id}")
+
+
 @router.get("/{plan_id}/delete")
 async def delete_plan(
     plan_id: str,
@@ -354,6 +367,7 @@ async def plan_detail(
             "character": character,
             "extra_stylesheets": _DETAIL_STYLE,
             "plan_id": plan_id,
+            "name": str(doc.get("name") or ""),
             "created_at": _format_timestamp(cast(datetime, doc["created_at"])),
             "stats": stats,
             "jobs": jobs_view,

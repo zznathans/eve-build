@@ -9,6 +9,7 @@ from app.services.plan import (
     get_plan,
     list_plans,
     remove_job,
+    rename_plan,
     update_job_build_flag,
     update_job_quantity,
 )
@@ -25,6 +26,7 @@ async def test_create_plan_inserts_expected_fields(mongo_db: AsyncMongoMockClien
     doc = await mongo_db.plans.find_one({"_id": plan_id})
     assert doc is not None
     assert doc["character_id"] == CHARACTER_ID
+    assert doc["name"] == ""
     assert len(doc["jobs"]) == 1
     job = doc["jobs"][0]
     assert job["job_id"]
@@ -287,6 +289,41 @@ async def test_list_plans_scopes_to_character_and_sorts_by_recency(
     plans = await list_plans(mongo_db, CHARACTER_ID)
 
     assert [doc["_id"] for doc in plans] == [first_id, second_id]
+
+
+async def test_rename_plan_sets_the_name(mongo_db: AsyncMongoMockClient) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+    original = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert original is not None
+
+    result = await rename_plan(mongo_db, plan_id, CHARACTER_ID, "Alpha Fleet Doctrine")
+
+    assert result is True
+    doc = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert doc is not None
+    assert doc["name"] == "Alpha Fleet Doctrine"
+    assert doc["updated_at"] >= original["updated_at"]
+
+
+async def test_rename_plan_returns_false_for_unknown_plan(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    result = await rename_plan(mongo_db, "nonexistent", CHARACTER_ID, "New Name")
+
+    assert result is False
+
+
+async def test_rename_plan_returns_false_for_a_different_owner(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+
+    result = await rename_plan(mongo_db, plan_id, OTHER_CHARACTER_ID, "New Name")
+
+    assert result is False
+    doc = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert doc is not None
+    assert doc["name"] == ""
 
 
 async def test_delete_plan_removes_it(mongo_db: AsyncMongoMockClient) -> None:

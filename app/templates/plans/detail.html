@@ -53,7 +53,10 @@
 <div class="page">
   <div class="header">
     <div>
-      <div class="name">Plan</div>
+      <form method="get" action="/plans/{{ plan_id }}/rename" class="rename-form">
+        <input type="text" name="name" value="{{ name }}" placeholder="Untitled Plan" maxlength="100">
+        <button type="submit" class="btn btn-secondary">Save</button>
+      </form>
       <div class="meta">saved {{ created_at }}</div>
     </div>
     <a class="btn btn-danger" href="/plans/{{ plan_id }}/delete"
