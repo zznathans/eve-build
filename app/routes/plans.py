@@ -182,7 +182,10 @@ async def list_plans(
     plans_view = []
     for doc in plans:
         jobs = cast(list[dict[str, object]], doc["jobs"])
-        jobs_text = "1 job" if len(jobs) == 1 else f"{len(jobs)} jobs"
+        if not jobs:
+            jobs_text = "No jobs yet"
+        else:
+            jobs_text = "1 job" if len(jobs) == 1 else f"{len(jobs)} jobs"
         plans_view.append(
             {
                 "plan_id": doc["_id"],
@@ -217,6 +220,15 @@ async def create_plan_from_build(
     build_set = frozenset(int(t) for t in build.split(",") if t.strip().isdigit())
     plan_id = await plan.create_plan(db, character.character_id, type_id, qty, build_set)
     return RedirectResponse(f"/plans/{plan_id}")
+
+
+@router.get("/new")
+async def new_plan(
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> RedirectResponse:
+    plan_id = await plan.create_empty_plan(db, character.character_id)
+    return RedirectResponse(f"/plans/{plan_id}/add-from-blueprints")
 
 
 @router.get("/{plan_id}/add-job")

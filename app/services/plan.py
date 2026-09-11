@@ -46,6 +46,25 @@ async def create_plan(
     return plan_id
 
 
+async def create_empty_plan(db: AsyncIOMotorDatabase, character_id: int) -> str:
+    """Creates a plan with no jobs yet - the user populates it afterward (typically via the
+    Add from Blueprints picker, redirected to right after creation). Returns the new plan's
+    id."""
+    plan_id = str(uuid.uuid4())
+    now = datetime.now(UTC).replace(tzinfo=None)
+    await db.plans.insert_one(
+        {
+            "_id": plan_id,
+            "character_id": character_id,
+            "name": "",
+            "jobs": [],
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+    return plan_id
+
+
 async def add_job(
     db: AsyncIOMotorDatabase,
     plan_id: str,

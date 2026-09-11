@@ -1,5 +1,7 @@
 .page { max-width: 80%; margin: 0 auto; padding: 2rem 1.5rem; }
 h1 { font-size: 1.4rem; margin: 0 0 1.5rem; }
+.header h1 { margin: 0; }
+.header .btn-primary { margin-left: auto; }
 .filters {
   display: flex; gap: 1.25rem; align-items: center;
   margin-bottom: 1.25rem; font-size: 0.85rem; color: #9aa4b2;

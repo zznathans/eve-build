@@ -21,7 +21,6 @@ from app.routes import (
     assets,
     auth,
     blueprints,
-    build,
     health,
     jobs,
     market_prices,
@@ -142,7 +141,6 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(assets.router)
 app.include_router(blueprints.router)
-app.include_router(build.router)
 app.include_router(jobs.router)
 app.include_router(market_prices.router)
 app.include_router(pi.router)

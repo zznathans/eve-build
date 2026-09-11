@@ -4,6 +4,7 @@ from mongomock_motor import AsyncMongoMockClient
 
 from app.services.plan import (
     add_job,
+    create_empty_plan,
     create_plan,
     delete_plan,
     get_plan,
@@ -36,6 +37,17 @@ async def test_create_plan_inserts_expected_fields(mongo_db: AsyncMongoMockClien
     assert job["build_set"] == [57478, 57479]
     assert doc["created_at"] is not None
     assert doc["updated_at"] == doc["created_at"]
+
+
+async def test_create_empty_plan_has_no_jobs(mongo_db: AsyncMongoMockClient) -> None:
+    plan_id = await create_empty_plan(mongo_db, CHARACTER_ID)
+
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    assert doc["character_id"] == CHARACTER_ID
+    assert doc["name"] == ""
+    assert doc["jobs"] == []
+    assert doc["created_at"] is not None
 
 
 async def test_add_job_appends_and_bumps_updated_at(mongo_db: AsyncMongoMockClient) -> None:

@@ -64,8 +64,7 @@
       Delete Plan
     </a>
   </div>
-  <a class="btn btn-primary plan-header-action" href="/build/items?plan_id={{ plan_id }}">Add to Plan</a>
-  <a class="btn btn-secondary plan-header-action" href="/plans/{{ plan_id }}/add-from-blueprints">Add from Blueprints</a>
+  <a class="btn btn-primary plan-header-action" href="/plans/{{ plan_id }}/add-from-blueprints">Add from Blueprints</a>
 
   <div class="summary">
     {{ summary_stat(stats.total_cost, "Total raw material cost") }}
@@ -148,6 +147,8 @@
       {% endfor %}
     </div>
   </div>
+  {% else %}
+  <p class="empty">This plan has no jobs yet - add some from your blueprints.</p>
   {% endif %}
   <a class="btn btn-secondary back" href="/plans">Back to plans</a>
 </div>

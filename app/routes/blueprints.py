@@ -386,9 +386,6 @@ async def catalog_blueprint_detail(
             "tech_level_label": _tech_level_label(is_reaction, is_t2),
             "produced_text": produced_text,
             "stats": stats,
-            "build_href": (
-                f"/build/items/{product_type_id}" if product_type_id is not None else None
-            ),
             "materials": [
                 {
                     "icon_url": item_icon_url(material["type_id"]),

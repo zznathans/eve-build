@@ -6,8 +6,7 @@ from mongomock_motor import AsyncMongoMockClient
 
 from app.core.config import Settings
 from app.web import item_icon_url
-from tests.test_blueprints_routes import CHARACTER_ID, _log_in
-from tests.test_build_routes import (
+from tests.fixtures_ship_chain import (
     COMPONENT_TYPE_ID,
     SHIP_BLUEPRINT_TYPE_ID,
     SHIP_TYPE_ID,
@@ -15,6 +14,7 @@ from tests.test_build_routes import (
     _seed_buildable_ship,
     _seed_two_level_ship,
 )
+from tests.test_blueprints_routes import CHARACTER_ID, _log_in
 
 MODULE_TYPE_ID = 700
 MODULE_BLUEPRINT_TYPE_ID = 701
@@ -93,6 +93,72 @@ async def test_plans_create_requires_login(client: TestClient) -> None:
     response = client.get("/plans/create", params={"type_id": SHIP_TYPE_ID})
 
     assert response.status_code == 401
+
+
+@respx.mock
+async def test_new_plan_requires_login(client: TestClient) -> None:
+    response = client.get("/plans/new")
+
+    assert response.status_code == 401
+
+
+@respx.mock
+async def test_new_plan_creates_an_empty_plan_and_redirects_to_the_picker(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+
+    response = client.get("/plans/new", follow_redirects=False)
+
+    assert response.status_code in (302, 303, 307)
+    location = response.headers["location"]
+    plan_id = location.removeprefix("/plans/").removesuffix("/add-from-blueprints")
+    assert location == f"/plans/{plan_id}/add-from-blueprints"
+
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    assert doc["character_id"] == CHARACTER_ID
+    assert doc["jobs"] == []
+
+
+@respx.mock
+async def test_new_plan_detail_shows_empty_state_and_add_from_blueprints_button(
+    client: TestClient,
+    test_settings: Settings,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
+
+    new_response = client.get("/plans/new", follow_redirects=False)
+    plan_id = (
+        new_response.headers["location"]
+        .removesuffix("/add-from-blueprints")
+        .removeprefix("/plans/")
+    )
+
+    response = client.get(f"/plans/{plan_id}")
+
+    assert response.status_code == 200
+    assert "This plan has no jobs yet" in response.text
+    assert f'href="/plans/{plan_id}/add-from-blueprints"' in response.text
+
+
+@respx.mock
+async def test_plans_list_shows_a_new_plan_button(
+    client: TestClient,
+    test_settings: Settings,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+
+    response = client.get("/plans")
+
+    assert response.status_code == 200
+    assert 'href="/plans/new"' in response.text
 
 
 @respx.mock
@@ -808,7 +874,8 @@ async def test_plan_detail_renders_a_single_job(
     assert '<div class="label">Jobs</div>' in response.text
     assert '<div class="value">1</div>' in response.text
     assert (
-        '<a class="btn btn-primary plan-header-action" href="/build/items?plan_id=' in response.text
+        f'<a class="btn btn-primary plan-header-action" '
+        f'href="/plans/{plan_id}/add-from-blueprints">' in response.text
     )
     assert "<th>Item</th>" in response.text
     assert "<th>Quantity</th>" in response.text
