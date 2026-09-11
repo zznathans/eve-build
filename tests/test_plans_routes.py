@@ -69,6 +69,25 @@ def _mock_assets(settings: Settings, assets: list[dict[str, object]] | None = No
     )
 
 
+def _mock_blueprints(settings: Settings, blueprints: list[dict[str, object]]) -> None:
+    respx.get(
+        f"{settings.esi_base_url}/characters/{CHARACTER_ID}/blueprints", params={"page": 1}
+    ).mock(return_value=Response(200, headers={"X-Pages": "1"}, json=blueprints))
+
+
+def _blueprint_entry(item_id: int, type_id: int) -> dict[str, object]:
+    return {
+        "item_id": item_id,
+        "type_id": type_id,
+        "location_id": 60003760,
+        "location_flag": "Hangar",
+        "quantity": -1,
+        "runs": -1,
+        "material_efficiency": 10,
+        "time_efficiency": 20,
+    }
+
+
 @respx.mock
 async def test_plans_create_requires_login(client: TestClient) -> None:
     response = client.get("/plans/create", params={"type_id": SHIP_TYPE_ID})
@@ -178,6 +197,142 @@ async def test_add_job_404s_for_a_different_owners_plan(
     _log_in(client, test_settings, rsa_key_pair)
 
     response = client.get("/plans/someone-elses-plan/add-job", params={"type_id": SHIP_TYPE_ID})
+
+    assert response.status_code == 404
+
+
+@respx.mock
+async def test_add_from_blueprints_requires_login(client: TestClient) -> None:
+    response = client.get("/plans/some-plan/add-from-blueprints")
+
+    assert response.status_code == 401
+
+
+@respx.mock
+async def test_add_from_blueprints_lists_owned_blueprints_with_checkboxes(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+    # _seed_buildable_ship only seeds SDE type docs for the product/materials, not the
+    # blueprint type itself - the blueprints list (like the real /blueprints page) shows
+    # the blueprint's own name, so it needs its own sde_types doc.
+    await mongo_db.sde_types.insert_one(
+        {"_id": SHIP_BLUEPRINT_TYPE_ID, "name": "Test Ship Blueprint", "published": True}
+    )
+    _mock_blueprints(test_settings, [_blueprint_entry(1001, SHIP_BLUEPRINT_TYPE_ID)])
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+
+    response = client.get(f"/plans/{plan_id}/add-from-blueprints")
+
+    assert response.status_code == 200
+    assert "Test Ship Blueprint" in response.text
+    assert (
+        '<input class="bp-checkbox" type="checkbox" name="item_id" value="1001">' in response.text
+    )
+
+
+@respx.mock
+async def test_add_from_blueprints_404s_for_unknown_plan(
+    client: TestClient,
+    test_settings: Settings,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+
+    response = client.get("/plans/nonexistent/add-from-blueprints")
+
+    assert response.status_code == 404
+
+
+@respx.mock
+async def test_add_jobs_from_blueprints_requires_login(client: TestClient) -> None:
+    response = client.get("/plans/some-plan/add-from-blueprints/add", params={"item_id": 1001})
+
+    assert response.status_code == 401
+
+
+@respx.mock
+async def test_add_jobs_from_blueprints_adds_selected_jobs_and_redirects(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
+    await _seed_buildable_ship(mongo_db)
+    await _seed_buildable_module(mongo_db)
+    _mock_blueprints(
+        test_settings,
+        [
+            _blueprint_entry(1001, SHIP_BLUEPRINT_TYPE_ID),
+            _blueprint_entry(1002, MODULE_BLUEPRINT_TYPE_ID),
+        ],
+    )
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+
+    response = client.get(
+        f"/plans/{plan_id}/add-from-blueprints/add",
+        params={"item_id": [1001, 1002]},
+        follow_redirects=False,
+    )
+
+    assert response.status_code in (302, 303, 307)
+    assert response.headers["location"] == f"/plans/{plan_id}"
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    assert len(doc["jobs"]) == 3  # the plan's original job, plus ship + module added here
+    added_target_type_ids = {job["target_type_id"] for job in doc["jobs"][1:]}
+    assert added_target_type_ids == {SHIP_TYPE_ID, MODULE_TYPE_ID}
+
+
+@respx.mock
+async def test_add_jobs_from_blueprints_ignores_unselected_and_unowned_ids(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+    _mock_blueprints(test_settings, [_blueprint_entry(1001, SHIP_BLUEPRINT_TYPE_ID)])
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+
+    response = client.get(
+        f"/plans/{plan_id}/add-from-blueprints/add", follow_redirects=False
+    )  # no item_id selected
+
+    assert response.status_code in (302, 303, 307)
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    assert len(doc["jobs"]) == 1
+
+
+@respx.mock
+async def test_add_jobs_from_blueprints_404s_for_unknown_plan(
+    client: TestClient,
+    test_settings: Settings,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+
+    response = client.get("/plans/nonexistent/add-from-blueprints/add", params={"item_id": 1001})
 
     assert response.status_code == 404
 

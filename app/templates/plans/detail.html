@@ -65,6 +65,7 @@
     </a>
   </div>
   <a class="btn btn-primary plan-header-action" href="/build/items?plan_id={{ plan_id }}">Add to Plan</a>
+  <a class="btn btn-secondary plan-header-action" href="/plans/{{ plan_id }}/add-from-blueprints">Add from Blueprints</a>
 
   <div class="summary">
     {{ summary_stat(stats.total_cost, "Total raw material cost") }}
@@ -90,38 +91,48 @@
   {% if jobs %}
   <div class="section-box">
     <h2>Jobs</h2>
-    <div class="item-grid job-grid">
+    <div class="job-list">
       {% for job in jobs %}
-      <div class="item-card">
+      <div class="item-card job-panel">
         <div class="item-card-content">
-          <div class="item-title">
-            <img class="item-title-icon" src="{{ job.icon_url }}" alt=""
-              onerror="this.style.visibility='hidden'">
-            {{ job.target_name }}
+          <div class="job-panel-header">
+            <div class="item-title">
+              <img class="item-title-icon" src="{{ job.icon_url }}" alt=""
+                onerror="this.style.visibility='hidden'">
+              {{ job.target_name }}
+            </div>
+            <form method="get" action="/plans/{{ plan_id }}/jobs/{{ job.job_id }}/update" class="qty-form">
+              <label for="qty-{{ job.job_id }}">Desired output</label>
+              <input type="number" id="qty-{{ job.job_id }}" name="qty"
+                value="{{ job.target_quantity }}" min="1">
+              <button type="submit" class="btn btn-secondary">Update</button>
+              {% if job.delete_enabled %}
+              <a class="btn btn-danger" href="/plans/{{ plan_id }}/jobs/{{ job.job_id }}/delete">Remove</a>
+              {% endif %}
+            </form>
+            <div class="item-line"><span>Cost</span>
+              <span class="item-value">{{ job.cost }}</span></div>
+            <div class="item-line"><span>Profit</span>
+              <span class="item-value">{{ job.profit }}</span></div>
           </div>
-          <form method="get" action="/plans/{{ plan_id }}/jobs/{{ job.job_id }}/update" class="qty-form">
-            <label for="qty-{{ job.job_id }}">Desired output</label>
-            <input type="number" id="qty-{{ job.job_id }}" name="qty"
-              value="{{ job.target_quantity }}" min="1">
-            <button type="submit" class="btn btn-secondary">Update</button>
-            {% if job.delete_enabled %}
-            <a class="btn btn-danger" href="/plans/{{ plan_id }}/jobs/{{ job.job_id }}/delete">Remove</a>
+          <div class="job-panel-tables">
+            {% if job.steps %}
+            <div class="job-panel-column">
+              <div class="item-subhead">Build steps</div>
+              {{ steps_table(job.steps) }}
+            </div>
             {% endif %}
-          </form>
-          <div class="item-line"><span>Cost</span>
-            <span class="item-value">{{ job.cost }}</span></div>
-          <div class="item-line"><span>Profit</span>
-            <span class="item-value">{{ job.profit }}</span></div>
-          {% if job.steps %}
-          <div class="item-subhead">Build steps</div>
-          {{ steps_table(job.steps) }}
-          {% endif %}
-          {% if job.pi_materials %}
-          <div class="item-subhead">Planetary Materials</div>
-          {{ materials_table(job.pi_materials) }}
-          {% endif %}
-          <div class="item-subhead">Materials</div>
-          {{ materials_table(job.materials) }}
+            {% if job.pi_materials %}
+            <div class="job-panel-column">
+              <div class="item-subhead">Planetary Materials</div>
+              {{ materials_table(job.pi_materials) }}
+            </div>
+            {% endif %}
+            <div class="job-panel-column">
+              <div class="item-subhead">Materials</div>
+              {{ materials_table(job.materials) }}
+            </div>
+          </div>
         </div>
       </div>
       {% endfor %}

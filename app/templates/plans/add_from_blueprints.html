@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Add Jobs from Blueprints - eve-build{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="header">
+    <div>
+      <div class="name">Add Jobs from Blueprints</div>
+      <div class="meta">Select one or more blueprints to add as jobs to this plan.</div>
+    </div>
+  </div>
+  {% if corp_note %}<p class="empty">{{ corp_note }}</p>{% endif %}
+
+  {% if rows %}
+  <form method="get" action="/plans/{{ plan_id }}/add-from-blueprints/add">
+    <div class="picker-actions">
+      <label>
+        <input type="checkbox" onchange="
+          document.querySelectorAll('.bp-checkbox').forEach(function (c) { c.checked = this.checked; }, this)
+        ">
+        Select all
+      </label>
+      <button type="submit" class="btn btn-primary">Add Selected to Plan</button>
+      <a class="btn btn-secondary" href="/plans/{{ plan_id }}">Cancel</a>
+    </div>
+    <table class="blueprint-picker-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Blueprint</th>
+          <th>Status</th>
+          <th>ME</th>
+          <th>TE</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td><input class="bp-checkbox" type="checkbox" name="item_id" value="{{ row.item_id }}"></td>
+          <td>
+            <div class="bp-name">
+              <img src="{{ row.icon_url }}" alt="" onerror="this.style.visibility='hidden'">
+              {{ row.name }}
+            </div>
+          </td>
+          <td>{{ row.status_text | safe }}</td>
+          <td>{{ row.me_gauge | safe }}</td>
+          <td>{{ row.te_gauge | safe }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </form>
+  {% else %}
+  <p class="empty">No blueprints found.</p>
+  {% endif %}
+  <a class="btn btn-secondary back" href="/plans/{{ plan_id }}">Back to plan</a>
+</div>
+{% endblock %}

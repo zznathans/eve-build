@@ -189,6 +189,134 @@ async def add_job_to_plan(
     return RedirectResponse(f"/plans/{plan_id}")
 
 
+@router.get("/{plan_id}/add-from-blueprints", response_class=HTMLResponse)
+async def add_from_blueprints(
+    request: Request,
+    plan_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    redis: Redis | None = Depends(get_redis),
+    settings: Settings = Depends(get_settings),
+) -> HTMLResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    if await plan.get_plan(db, plan_id, character.character_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+
+    blueprints, corp_included = await character_data.get_merged_blueprints(
+        db, redis, settings, character
+    )
+    if not blueprints:
+        return templates.TemplateResponse(
+            request,
+            "plans/add_from_blueprints.html",
+            {
+                "character": character,
+                "extra_stylesheets": _DETAIL_STYLE,
+                "plan_id": plan_id,
+                "corp_note": "",
+                "rows": [],
+            },
+        )
+
+    sde_by_type_id = await sde.blueprint_docs(
+        db, redis, settings, {bp.type_id for bp in blueprints}
+    )
+    product_type_ids = {
+        cast(int, sde_doc["product_type_id"])
+        for sde_doc in sde_by_type_id.values()
+        if sde_doc.get("product_type_id") is not None
+    }
+    type_docs = await sde.type_docs(
+        db, redis, settings, {bp.type_id for bp in blueprints} | product_type_ids
+    )
+
+    def _name(type_id: int) -> str:
+        return str(type_docs.get(type_id, {}).get("name", f"Type {type_id}"))
+
+    rows = []
+    for bp in blueprints:
+        sde_doc = sde_by_type_id.get(bp.type_id)
+        product_type_id = sde_doc.get("product_type_id") if sde_doc is not None else None
+        if product_type_id is None:
+            continue
+        product_quantity = cast(int, sde_doc.get("product_quantity", 1)) if sde_doc else 1
+
+        is_copy = bp.quantity == -2 or bp.runs != -1
+        status_text = "Copy" if is_copy else "Original"
+        if is_copy:
+            status_text += f" &middot; {bp.runs} runs"
+
+        rows.append(
+            {
+                "item_id": bp.item_id,
+                "product_type_id": product_type_id,
+                "product_quantity": product_quantity,
+                "icon_url": item_icon_url(cast(int, product_type_id)),
+                "name": _name(bp.type_id),
+                "status_text": status_text,
+                "me_gauge": gauge_cell_html(
+                    100.0 * bp.material_efficiency / 10, f"{bp.material_efficiency}/10"
+                ),
+                "te_gauge": gauge_cell_html(
+                    100.0 * bp.time_efficiency / 20, f"{bp.time_efficiency}/20"
+                ),
+            }
+        )
+    rows.sort(key=lambda row: cast(str, row["name"]).lower())
+
+    return templates.TemplateResponse(
+        request,
+        "plans/add_from_blueprints.html",
+        {
+            "character": character,
+            "extra_stylesheets": _DETAIL_STYLE,
+            "plan_id": plan_id,
+            "corp_note": "Includes corporation blueprints." if corp_included else "",
+            "rows": rows,
+        },
+    )
+
+
+@router.get("/{plan_id}/add-from-blueprints/add")
+async def add_jobs_from_blueprints(
+    plan_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    redis: Redis | None = Depends(get_redis),
+    settings: Settings = Depends(get_settings),
+    item_id: list[int] = Query(default=[]),
+) -> RedirectResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    if await plan.get_plan(db, plan_id, character.character_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+
+    if item_id:
+        selected_item_ids = frozenset(item_id)
+        blueprints, _ = await character_data.get_merged_blueprints(db, redis, settings, character)
+        selected_blueprints = [bp for bp in blueprints if bp.item_id in selected_item_ids]
+        sde_by_type_id = await sde.blueprint_docs(
+            db, redis, settings, {bp.type_id for bp in selected_blueprints}
+        )
+        for bp in selected_blueprints:
+            sde_doc = sde_by_type_id.get(bp.type_id)
+            product_type_id = sde_doc.get("product_type_id") if sde_doc is not None else None
+            if product_type_id is None:
+                continue
+            product_quantity = cast(int, sde_doc.get("product_quantity", 1)) if sde_doc else 1
+            await plan.add_job(
+                db,
+                plan_id,
+                character.character_id,
+                cast(int, product_type_id),
+                product_quantity,
+                frozenset(),
+            )
+
+    return RedirectResponse(f"/plans/{plan_id}")
+
+
 @router.get("/{plan_id}/jobs/{job_id}/update")
 async def update_job_quantity(
     plan_id: str,
