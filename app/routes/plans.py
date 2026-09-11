@@ -2,6 +2,7 @@ import re
 from datetime import UTC, datetime
 from html import escape
 from typing import cast
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -429,7 +430,8 @@ async def set_job_build_flag(
     )
     if not updated:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan or job not found")
-    return RedirectResponse(f"/plans/{plan_id}")
+    safe_plan_id = quote(plan_id, safe="")
+    return RedirectResponse(f"/plans/{safe_plan_id}")
 
 
 @router.get("/{plan_id}/materials/{type_id}/build-set")
