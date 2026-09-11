@@ -557,9 +557,11 @@ async def test_plan_detail_aggregates_totals_and_materials_across_jobs(
     assert "Total Bill of Materials" in response.text
     assert response.text.count("Tritanium") >= 3  # once per job card, plus the combined panel
     assert "<td>200</td>" in response.text
-    # Owns 50 of the 200 needed - a 25% availability gauge on the combined panel.
-    assert "50/200" in response.text
+    # Owns 50 of the 200 needed - a 25% availability gauge on the combined panel, with
+    # owned to the left of the bar and needed to the right.
+    assert '<span class="mini-gauge-text mini-gauge-text-left">50</span>' in response.text
     assert 'style="width: 25%' in response.text
+    assert '<span class="mini-gauge-text">200</span>' in response.text
 
 
 @respx.mock

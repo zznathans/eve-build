@@ -39,7 +39,9 @@ def _material_view(
         "quantity": material.quantity,
         "value": format_isk(material.quantity * material.unit_price),
         "availability_html": gauge_cell_html(
-            percentage, f"{format_number(owned)}/{format_number(material.quantity)}"
+            percentage,
+            format_number(material.quantity),
+            owned_text=format_number(owned),
         ),
     }
 

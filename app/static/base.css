@@ -80,3 +80,4 @@ a { color: inherit; }
   flex: 0 0 5rem; font-variant-numeric: tabular-nums;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.mini-gauge-text-left { text-align: left; }

@@ -31,12 +31,24 @@ def gauge_color(percentage: float) -> str:
     return "#f0625a"
 
 
-def gauge_cell_html(percentage: float, value_text: str | None = None) -> str:
+def gauge_cell_html(
+    percentage: float, value_text: str | None = None, *, owned_text: str | None = None
+) -> str:
+    """Renders a bar gauge. value_text (right of the bar) defaults to a percentage; pass
+    owned_text too (e.g. for an "owned vs needed" comparison) to also show a fixed-width
+    label to the left of the bar - both text slots are fixed-width so the bar itself is the
+    same length on every row of a table, regardless of how many digits either value has."""
     clamped = min(100.0, max(0.0, percentage))
     color = gauge_color(percentage)
     text = value_text if value_text is not None else f"{percentage:.0f}%"
+    owned_html = (
+        f'<span class="mini-gauge-text mini-gauge-text-left">{owned_text}</span>'
+        if owned_text is not None
+        else ""
+    )
     return f"""
       <div class="mini-gauge">
+        {owned_html}
         <div class="mini-gauge-track">
           <div class="mini-gauge-fill" style="width: {clamped:.0f}%; background: {color};"></div>
         </div>
