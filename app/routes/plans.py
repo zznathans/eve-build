@@ -29,11 +29,55 @@ def _format_timestamp(value: datetime) -> str:
     return value.replace(tzinfo=UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
+def _material_bulk_status(type_id: int, resolutions: list[build_chain.BuildResolution]) -> str:
+    """Whether a material is currently built (a step in some job's chain), bought (raw in
+    some job's chain), or both ('mixed') across every job in the plan."""
+    built = any(step.type_id == type_id for resolution in resolutions for step in resolution.steps)
+    bought = any(
+        material.type_id == type_id
+        for resolution in resolutions
+        for material in resolution.raw_materials
+    )
+    if built and bought:
+        return "mixed"
+    return "build" if built else "buy"
+
+
+def _bulk_material_flag_html(type_id: int, status: str, plan_id: str, is_buildable: bool) -> str:
+    """Build/Buy toggle for the combined Bill of Materials page - unlike a single job's own
+    toggle, clicking either button here applies to every job in the plan at once (see
+    plan.set_build_flag_for_all_jobs), and the currently-consistent choice (if any) is shown
+    as a plain highlighted pill rather than a clickable link."""
+    if not is_buildable:
+        return '<span class="flag flag-buy">Bought</span>'
+
+    def _href(build: bool) -> str:
+        flag = "true" if build else "false"
+        return escape(f"/plans/{plan_id}/materials/{type_id}/build-set?build={flag}")
+
+    build_html = (
+        '<span class="flag flag-build">Build</span>'
+        if status == "build"
+        else f'<a class="flag flag-inactive" href="{_href(True)}">Build</a>'
+    )
+    buy_html = (
+        '<span class="flag flag-buy">Buy</span>'
+        if status == "buy"
+        else f'<a class="flag flag-inactive" href="{_href(False)}">Buy</a>'
+    )
+    return f'<div class="flag-toggle-group">{build_html}{buy_html}</div>'
+
+
 def _material_view(
-    material: build_chain.RawMaterial, owned_by_type_id: dict[int, int]
+    material: build_chain.RawMaterial,
+    owned_by_type_id: dict[int, int],
+    *,
+    plan_id: str,
+    resolutions: list[build_chain.BuildResolution],
 ) -> dict[str, object]:
     owned = owned_by_type_id.get(material.type_id, 0)
     percentage = 100.0 if material.quantity <= 0 else min(100.0, owned / material.quantity * 100)
+    status = _material_bulk_status(material.type_id, resolutions)
     return {
         "icon_url": item_icon_url(material.type_id),
         "name": material.name,
@@ -43,6 +87,9 @@ def _material_view(
             percentage,
             format_number(material.quantity),
             owned_text=format_number(owned),
+        ),
+        "flag_html": _bulk_material_flag_html(
+            material.type_id, status, plan_id, material.is_buildable
         ),
     }
 
@@ -373,6 +420,24 @@ async def set_job_build_flag(
     return RedirectResponse(f"/plans/{plan_id}")
 
 
+@router.get("/{plan_id}/materials/{type_id}/build-set")
+async def set_material_build_flag_for_all_jobs(
+    plan_id: str,
+    type_id: int,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    build: bool = Query(...),
+) -> RedirectResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    updated = await plan.set_build_flag_for_all_jobs(
+        db, plan_id, character.character_id, type_id, build
+    )
+    if not updated:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+    return RedirectResponse(f"/plans/{plan_id}")
+
+
 @router.get("/{plan_id}/jobs/{job_id}/delete")
 async def remove_job_from_plan(
     plan_id: str,
@@ -533,7 +598,7 @@ async def plan_detail(
     combined_materials_view = []
     combined_pi_materials_view = []
     for material in combined_materials:
-        view = _material_view(material, owned_by_type_id)
+        view = _material_view(material, owned_by_type_id, plan_id=plan_id, resolutions=resolutions)
         if material.type_id in pi_type_ids:
             combined_pi_materials_view.append(view)
         else:

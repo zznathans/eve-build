@@ -10,6 +10,7 @@ from app.services.plan import (
     list_plans,
     remove_job,
     rename_plan,
+    set_build_flag_for_all_jobs,
     update_job_build_flag,
     update_job_quantity,
 )
@@ -203,6 +204,57 @@ async def test_update_job_build_flag_returns_false_for_a_different_owner(
     job_id = doc["jobs"][0]["job_id"]
 
     result = await update_job_build_flag(mongo_db, plan_id, OTHER_CHARACTER_ID, job_id, 57478, True)
+
+    assert result is False
+    unchanged = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert unchanged is not None
+    assert unchanged["jobs"][0]["build_set"] == []
+
+
+async def test_set_build_flag_for_all_jobs_adds_material_to_every_job(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+    await add_job(mongo_db, plan_id, CHARACTER_ID, MODULE_TYPE_ID, 2, frozenset({57479}))
+
+    result = await set_build_flag_for_all_jobs(mongo_db, plan_id, CHARACTER_ID, 57478, True)
+
+    assert result is True
+    doc = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert doc is not None
+    assert doc["jobs"][0]["build_set"] == [57478]
+    assert doc["jobs"][1]["build_set"] == [57478, 57479]  # existing entries kept
+
+
+async def test_set_build_flag_for_all_jobs_removes_material_from_every_job(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset({57478}))
+    await add_job(mongo_db, plan_id, CHARACTER_ID, MODULE_TYPE_ID, 2, frozenset({57478, 57479}))
+
+    result = await set_build_flag_for_all_jobs(mongo_db, plan_id, CHARACTER_ID, 57478, False)
+
+    assert result is True
+    doc = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert doc is not None
+    assert doc["jobs"][0]["build_set"] == []
+    assert doc["jobs"][1]["build_set"] == [57479]
+
+
+async def test_set_build_flag_for_all_jobs_returns_false_for_unknown_plan(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    result = await set_build_flag_for_all_jobs(mongo_db, "nonexistent", CHARACTER_ID, 57478, True)
+
+    assert result is False
+
+
+async def test_set_build_flag_for_all_jobs_returns_false_for_a_different_owner(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+
+    result = await set_build_flag_for_all_jobs(mongo_db, plan_id, OTHER_CHARACTER_ID, 57478, True)
 
     assert result is False
     unchanged = await get_plan(mongo_db, plan_id, CHARACTER_ID)

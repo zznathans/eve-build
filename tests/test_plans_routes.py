@@ -867,6 +867,64 @@ async def test_plan_detail_aggregates_totals_and_materials_across_jobs(
 
 
 @respx.mock
+async def test_plan_detail_shows_bulk_toggle_and_it_builds_the_material_in_every_job(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
+    await _seed_two_level_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    client.get(f"/plans/{plan_id}/add-job", params={"type_id": SHIP_TYPE_ID, "qty": 2})
+
+    # Component is bought (raw) in both jobs by default - the combined panel shows a
+    # Build/Buy toggle group with Buy as the active (non-clickable) pill.
+    response = client.get(f"/plans/{plan_id}")
+    assert response.status_code == 200
+    assert '<span class="flag flag-buy">Buy</span>' in response.text
+    build_href = f"/plans/{plan_id}/materials/{COMPONENT_TYPE_ID}/build-set?build=true"
+    assert f'href="{build_href}"' in response.text
+
+    toggle_response = client.get(
+        f"/plans/{plan_id}/materials/{COMPONENT_TYPE_ID}/build-set",
+        params={"build": "true"},
+        follow_redirects=False,
+    )
+
+    assert toggle_response.status_code in (302, 303, 307)
+    assert toggle_response.headers["location"] == f"/plans/{plan_id}"
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    assert all(COMPONENT_TYPE_ID in job["build_set"] for job in doc["jobs"])
+
+
+@respx.mock
+async def test_set_material_build_flag_for_all_jobs_requires_login(client: TestClient) -> None:
+    response = client.get("/plans/some-plan/materials/500/build-set", params={"build": "true"})
+
+    assert response.status_code == 401
+
+
+@respx.mock
+async def test_set_material_build_flag_for_all_jobs_404s_for_unknown_plan(
+    client: TestClient,
+    test_settings: Settings,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+
+    response = client.get("/plans/nonexistent/materials/500/build-set", params={"build": "true"})
+
+    assert response.status_code == 404
+
+
+@respx.mock
 async def test_plan_detail_splits_pi_materials_into_their_own_section(
     client: TestClient,
     test_settings: Settings,

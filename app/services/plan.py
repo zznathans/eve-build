@@ -122,6 +122,32 @@ async def update_job_build_flag(
     return result.matched_count > 0
 
 
+async def set_build_flag_for_all_jobs(
+    db: AsyncIOMotorDatabase, plan_id: str, character_id: int, type_id: int, build: bool
+) -> bool:
+    """Adds or removes one material from every job's build_set in the plan at once - the
+    combined Bill of Materials page's per-material Build/Buy toggle affects the whole plan,
+    unlike a single job's own toggle. Returns False if the plan doesn't exist or isn't owned
+    by this character (the route turns that into a 404)."""
+    doc = await db.plans.find_one({"_id": plan_id, "character_id": character_id})
+    if doc is None:
+        return False
+    jobs = cast(list[dict[str, object]], doc["jobs"])
+    for job in jobs:
+        build_set = set(cast(list[int], job["build_set"]))
+        if build:
+            build_set.add(type_id)
+        else:
+            build_set.discard(type_id)
+        job["build_set"] = sorted(build_set)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    await db.plans.update_one(
+        {"_id": plan_id, "character_id": character_id},
+        {"$set": {"jobs": jobs, "updated_at": now}},
+    )
+    return True
+
+
 async def remove_job(
     db: AsyncIOMotorDatabase, plan_id: str, character_id: int, job_id: str
 ) -> bool | None:
