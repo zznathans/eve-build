@@ -11,6 +11,12 @@ templates:
   - market-prices-dispatch-cronjob.yaml
   - market-prices-fetch-worker.yaml
   - market-prices-write-worker.yaml
+  - tracked-info-dispatch-cronjob.yaml
+  - tracked-info-refresh-worker.yaml
+  - market-prices-keda-triggerauth.yaml
+  - market-prices-fetch-worker-scaledobject.yaml
+  - market-prices-write-worker-scaledobject.yaml
+  - tracked-info-refresh-worker-scaledobject.yaml
 set:
   eveBuild.marketPrices.refreshApiKey: my-api-key
   eveBuild.session.secretKey: my-session-key
@@ -18,6 +24,7 @@ set:
   rabbitmq.deploy: true
   mongodb.enabled: true
   redis.enabled: true
+  keda.enabled: true
 tests:
   - it: syncs foundational secrets and the service account first (wave -2)
     asserts:
@@ -34,7 +41,7 @@ tests:
           value: "-2"
         template: service-account.yaml
 
-  - it: syncs datastores before the app (wave -1)
+  - it: syncs datastores, RabbitMQ, and KEDA's TriggerAuthentication before the app (wave -1)
     asserts:
       - equal:
           path: metadata.annotations["argocd.argoproj.io/sync-wave"]
@@ -45,6 +52,10 @@ tests:
           value: "-1"
         documentIndex: 1
         template: mongodb.yaml
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "-1"
+        template: market-prices-keda-triggerauth.yaml
       - equal:
           path: metadata.annotations["argocd.argoproj.io/sync-wave"]
           value: "-1"
@@ -75,3 +86,26 @@ tests:
           path: metadata.annotations["argocd.argoproj.io/sync-wave"]
           value: "1"
         template: market-prices-write-worker.yaml
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "1"
+        template: tracked-info-dispatch-cronjob.yaml
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "1"
+        template: tracked-info-refresh-worker.yaml
+
+  - it: syncs the KEDA ScaledObjects last, after the workers and the TriggerAuthentication (wave 3)
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "3"
+        template: market-prices-fetch-worker-scaledobject.yaml
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "3"
+        template: market-prices-write-worker-scaledobject.yaml
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "3"
+        template: tracked-info-refresh-worker-scaledobject.yaml

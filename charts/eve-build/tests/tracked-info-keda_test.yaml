@@ -1,0 +1,92 @@
+suite: tracked-info-keda
+templates:
+  - tracked-info-refresh-worker.yaml
+  - tracked-info-refresh-worker-scaledobject.yaml
+  - market-prices-keda-triggerauth.yaml
+  - market-prices-rabbitmq-secret.yaml
+set:
+  eveBuild.marketPrices.refreshApiKey: my-api-key
+  eveBuild.session.secretKey: my-session-key
+tests:
+  - it: renders no KEDA resources when rabbitmq is enabled but keda is disabled
+    set:
+      rabbitmq.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: tracked-info-refresh-worker-scaledobject.yaml
+
+  - it: renders no KEDA resources when keda is enabled but rabbitmq is disabled
+    set:
+      keda.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: tracked-info-refresh-worker-scaledobject.yaml
+
+  - it: renders the ScaledObject when both are enabled, sharing the market-prices TriggerAuthentication
+    set:
+      rabbitmq.enabled: true
+      keda.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: tracked-info-refresh-worker-scaledobject.yaml
+      - isKind:
+          of: ScaledObject
+        template: tracked-info-refresh-worker-scaledobject.yaml
+      - equal:
+          path: spec.triggers[0].authenticationRef.name
+          value: RELEASE-NAME-rabbitmq-conn
+        template: tracked-info-refresh-worker-scaledobject.yaml
+      - hasDocuments:
+          count: 1
+        template: market-prices-keda-triggerauth.yaml
+
+  - it: ScaledObject targets the correct queue and replica bounds
+    set:
+      rabbitmq.enabled: true
+      keda.enabled: true
+      eveBuild.trackedInfo.refreshWorker.keda.minReplicas: 1
+      eveBuild.trackedInfo.refreshWorker.keda.maxReplicas: 6
+      eveBuild.trackedInfo.refreshWorker.keda.queueLength: 20
+    asserts:
+      - equal:
+          path: spec.scaleTargetRef.name
+          value: RELEASE-NAME-tracked-info-refresh-worker
+        template: tracked-info-refresh-worker-scaledobject.yaml
+      - equal:
+          path: spec.minReplicaCount
+          value: 1
+        template: tracked-info-refresh-worker-scaledobject.yaml
+      - equal:
+          path: spec.maxReplicaCount
+          value: 6
+        template: tracked-info-refresh-worker-scaledobject.yaml
+      - equal:
+          path: spec.triggers[0].metadata.queueName
+          value: tracked_info.refresh_jobs
+        template: tracked-info-refresh-worker-scaledobject.yaml
+      - equal:
+          path: spec.triggers[0].metadata.value
+          value: "20"
+        template: tracked-info-refresh-worker-scaledobject.yaml
+
+  - it: omits replicas on the Deployment when keda is enabled
+    set:
+      rabbitmq.enabled: true
+      keda.enabled: true
+    asserts:
+      - notExists:
+          path: spec.replicas
+        template: tracked-info-refresh-worker.yaml
+
+  - it: syncs the ScaledObject last (wave 3)
+    set:
+      rabbitmq.enabled: true
+      keda.enabled: true
+    asserts:
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "3"
+        template: tracked-info-refresh-worker-scaledobject.yaml

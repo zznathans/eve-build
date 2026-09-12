@@ -76,9 +76,10 @@ is supplied. Renders a single EnvVar entry at zero indentation.
 
 {{/*
 Shared container env vars for every eve-build workload (the app Deployment, plus the
-market-prices dispatch CronJob and fetch/write worker Deployments) - they all need the same
-Mongo/Redis/RabbitMQ/ESI/SSO configuration. Renders a list of EnvVar entries at zero indentation;
-callers should `{{- include "eve-build.env" . | nindent 12 }}` under their container's `env:` key.
+market-prices dispatch CronJob and fetch/write worker Deployments, and the tracked-info
+dispatch CronJob and refresh-worker Deployment) - they all need the same Mongo/Redis/RabbitMQ/
+ESI/SSO configuration. Renders a list of EnvVar entries at zero indentation; callers should
+`{{- include "eve-build.env" . | nindent 12 }}` under their container's `env:` key.
 */}}
 {{- define "eve-build.env" -}}
 {{- $redisEnabled := or .Values.redis.enabled (ne .Values.redis.url "") }}

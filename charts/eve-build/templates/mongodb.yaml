@@ -97,9 +97,6 @@ spec:
     spec:
       template:
         spec:
-          metadata:
-            annotations:
-              argocd.argoproj.io/sync-wave: "-2"
           containers:
             - name: mongod
               resources:

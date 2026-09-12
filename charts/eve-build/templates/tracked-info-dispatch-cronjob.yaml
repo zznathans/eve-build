@@ -1,0 +1,27 @@
+{{- if .Values.rabbitmq.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-tracked-info-dispatch
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  schedule: {{ .Values.eveBuild.trackedInfo.dispatchSchedule | quote }}
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          serviceAccountName: {{ .Release.Name }}-serviceaccount
+          restartPolicy: Never
+          containers:
+            - name: tracked-info-dispatch
+              image: {{ .Values.eveBuild.imageRepository }}:{{ .Values.eveBuild.imageTag | default .Chart.AppVersion }}
+              imagePullPolicy: {{ .Values.eveBuild.imagePullPolicy }}
+              command: ["python", "-m", "app.scripts.dispatch_tracked_info_refresh"]
+              env:
+                {{- include "eve-build.env" . | nindent 16 }}
+              securityContext:
+                {{- toYaml .Values.eveBuild.securityContext | nindent 16 }}
+{{- end }}

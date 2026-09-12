@@ -50,6 +50,12 @@ _CORP_INDUSTRY_JOBS_SOURCE = _Source(
 _PERSONAL_SOURCES = (_ASSETS_SOURCE, _BLUEPRINTS_SOURCE, _INDUSTRY_JOBS_SOURCE, _COLONIES_SOURCE)
 _CORP_SOURCES = (_CORP_ASSETS_SOURCE, _CORP_BLUEPRINTS_SOURCE, _CORP_INDUSTRY_JOBS_SOURCE)
 
+# Public aliases so other modules (the tracked-info background refresh) can enumerate the
+# same "what do we track" registry as this module's own request-path/cache-summary code,
+# without reaching into the underscore-prefixed internals above.
+PERSONAL_SOURCES = _PERSONAL_SOURCES
+CORP_SOURCES = _CORP_SOURCES
+
 
 def corp_data_connected(character: CharacterDocument) -> bool:
     return character.corp_refresh_token is not None

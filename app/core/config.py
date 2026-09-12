@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     market_prices_refresh_api_key: str = ""
     market_prices_write_prefetch: int = 10
 
+    tracked_info_refresh_prefetch: int = 2
+
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_database: str = "eve-build"
     mongodb_max_pool_size: int = 5
