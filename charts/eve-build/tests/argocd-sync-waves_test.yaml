@@ -10,6 +10,8 @@ templates:
   - market-prices-dispatch-cronjob.yaml
   - market-prices-fetch-worker.yaml
   - market-prices-write-worker.yaml
+  - tracked-info-dispatch-cronjob.yaml
+  - tracked-info-refresh-worker.yaml
 set:
   eveBuild.marketPrices.refreshApiKey: my-api-key
   eveBuild.session.secretKey: my-session-key
@@ -69,3 +71,11 @@ tests:
           path: metadata.annotations["argocd.argoproj.io/sync-wave"]
           value: "1"
         template: market-prices-write-worker.yaml
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "1"
+        template: tracked-info-dispatch-cronjob.yaml
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "1"
+        template: tracked-info-refresh-worker.yaml

@@ -195,6 +195,48 @@ eveBuild:
         # -- Target number of queued refresh results per replica.
         queueLength: 1
 
+  trackedInfo:
+    # -- Only rendered when rabbitmq.enabled is true - the dispatch CronJob and refresh-worker
+    # Deployment below keep every tracked character's/corporation's assets, blueprints,
+    # industry jobs and PI colonies cached ahead of time, so a page load hits Redis instead of
+    # blocking on ESI. With rabbitmq disabled, that data still refreshes lazily/inline on
+    # demand as before - this is a pure performance optimization, not a required feature.
+    #
+    # Cron schedule the dispatch CronJob uses to enqueue a refresh job for every tracked
+    # character/corporation - comfortably more often than the shortest cache TTL (15 minutes,
+    # for PI colonies) so the cache never goes fully cold between runs.
+    dispatchSchedule: "*/30 * * * *"
+    # -- Shared KEDA settings for the refresh-worker ScaledObject below. Only used when
+    # `keda.enabled` is true - see the top-level `keda` section.
+    keda:
+      # -- How often (in seconds) KEDA polls RabbitMQ for the current queue length.
+      pollingInterval: 15
+      # -- How long (in seconds) to wait after the last high metric value before scaling back down.
+      cooldownPeriod: 120
+    refreshWorker:
+      # -- Number of refresh-worker replicas. Ignored (and no `replicas` field rendered on the
+      # Deployment) when `keda.enabled` is true - the ScaledObject's HPA owns replica count
+      # instead. Fetches from ESI (only for entries whose cache has actually expired) and
+      # writes straight to MongoDB/Redis.
+      replicas: 1
+      # -- Resource requests and limits for the refresh-worker container.
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 250m
+          memory: 256Mi
+      keda:
+        # -- Minimum refresh-worker replicas KEDA will scale down to - 0 lets it scale to zero
+        # between dispatch runs once the refresh_jobs queue drains.
+        minReplicas: 0
+        # -- Maximum refresh-worker replicas KEDA will scale up to.
+        maxReplicas: 2
+        # -- Target number of queued refresh jobs per replica - KEDA scales so that
+        # (queue length / queueLength) replicas are running, up to maxReplicas.
+        queueLength: 5
+
   # -- Directory the bundled EVE SDE data is read from at migration time.
   # Only override this if you're mounting a custom SDE dataset.
   sdeDataDir: "app/data/sde"

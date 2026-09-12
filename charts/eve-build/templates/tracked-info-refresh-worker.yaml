@@ -1,0 +1,34 @@
+{{- if .Values.rabbitmq.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-tracked-info-refresh-worker
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  revisionHistoryLimit: 3
+  {{- if not .Values.keda.enabled }}
+  replicas: {{ .Values.eveBuild.trackedInfo.refreshWorker.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-tracked-info-refresh-worker
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-tracked-info-refresh-worker
+    spec:
+      serviceAccountName: {{ .Release.Name }}-serviceaccount
+      containers:
+        - name: tracked-info-refresh-worker
+          image: {{ .Values.eveBuild.imageRepository }}:{{ .Values.eveBuild.imageTag | default .Chart.AppVersion }}
+          imagePullPolicy: {{ .Values.eveBuild.imagePullPolicy }}
+          command: ["python", "-m", "app.scripts.tracked_info_refresh_worker"]
+          env:
+            {{- include "eve-build.env" . | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.eveBuild.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.eveBuild.trackedInfo.refreshWorker.resources | nindent 12 }}
+{{- end }}

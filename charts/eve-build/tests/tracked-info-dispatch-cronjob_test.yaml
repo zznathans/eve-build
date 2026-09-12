@@ -1,0 +1,45 @@
+suite: tracked-info-dispatch-cronjob
+templates:
+  - tracked-info-dispatch-cronjob.yaml
+set:
+  eveBuild.marketPrices.refreshApiKey: my-api-key
+  eveBuild.session.secretKey: my-session-key
+tests:
+  - it: renders nothing when rabbitmq is disabled
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders a CronJob when rabbitmq is enabled
+    set:
+      rabbitmq.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: CronJob
+
+  - it: uses the configured schedule
+    set:
+      rabbitmq.enabled: true
+      eveBuild.trackedInfo.dispatchSchedule: "*/15 * * * *"
+    asserts:
+      - equal:
+          path: spec.schedule
+          value: "*/15 * * * *"
+
+  - it: runs the dispatch script via the app image
+    set:
+      rabbitmq.enabled: true
+    asserts:
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].command
+          value: ["python", "-m", "app.scripts.dispatch_tracked_info_refresh"]
+
+  - it: never restarts the pod on failure
+    set:
+      rabbitmq.enabled: true
+    asserts:
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.restartPolicy
+          value: Never
