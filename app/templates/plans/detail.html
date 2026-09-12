@@ -100,6 +100,16 @@
                 onerror="this.style.visibility='hidden'">
               {{ job.target_name }}
             </div>
+            {% if job.blueprint_link %}
+            <div class="item-line job-blueprint-line"><span>Blueprint</span>
+              <span class="item-value">
+                <a href="/blueprints/{{ job.blueprint_link.item_id }}">{{ job.blueprint_link.name }}</a>
+                <span class="job-blueprint-efficiency">
+                  {{ job.blueprint_link.me_gauge | safe }}
+                  {{ job.blueprint_link.te_gauge | safe }}
+                </span>
+              </span></div>
+            {% endif %}
             <form method="get" action="/plans/{{ plan_id }}/jobs/{{ job.job_id }}/update" class="qty-form">
               <label for="qty-{{ job.job_id }}">Desired output</label>
               <input type="number" id="qty-{{ job.job_id }}" name="qty"
@@ -116,16 +126,6 @@
             {% if job.build_time %}
             <div class="item-line"><span>Build time</span>
               <span class="item-value">{{ job.build_time }}</span></div>
-            {% endif %}
-            {% if job.blueprint_link %}
-            <div class="item-line"><span>Blueprint</span>
-              <span class="item-value">
-                <a href="/blueprints/{{ job.blueprint_link.item_id }}">{{ job.blueprint_link.name }}</a>
-                <span class="job-blueprint-efficiency">
-                  {{ job.blueprint_link.me_gauge | safe }}
-                  {{ job.blueprint_link.te_gauge | safe }}
-                </span>
-              </span></div>
             {% endif %}
           </div>
           <div class="job-panel-tables">
