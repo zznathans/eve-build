@@ -2,19 +2,24 @@
 {% block title %}Plans{% endblock %}
 {% block body %}
 <div class="page">
-  <h1>Plans</h1>
+  <div class="header">
+    <h1>Plans</h1>
+    <a class="btn btn-primary" href="/plans/new">+ New Plan</a>
+  </div>
   {% if not plans %}
-  <p class="empty">No plans saved yet - build something and add it to a plan.</p>
+  <p class="empty">No plans saved yet - create one and add jobs from your blueprints.</p>
   {% else %}
   <div class="item-grid">
     {% for p in plans %}
     <a class="item-card" href="/plans/{{ p.plan_id }}">
       <div class="item-card-content">
-        <div class="item-title">
-          <img class="item-title-icon" src="{{ p.icon_url }}" alt=""
+        <div class="plan-job-icons">
+          {% for job_icon in p.job_icons %}
+          <img src="{{ job_icon.icon_url }}" alt="{{ job_icon.name }}" title="{{ job_icon.name }}"
             onerror="this.style.visibility='hidden'">
-          {{ p.name }}
+          {% endfor %}
         </div>
+        <div class="item-title">{{ p.name }}</div>
         <div class="item-line"><span>Jobs</span>
           <span class="item-value">{{ p.jobs_text }}</span></div>
         <div class="item-line"><span>Created</span>

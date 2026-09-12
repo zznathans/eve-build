@@ -1,7 +1,25 @@
-.page { max-width: 80rem; margin: 0 auto; padding: 2rem 1.5rem; }
+.page { max-width: 95%; margin: 0 auto; padding: 2rem 1.5rem; }
 .short { color: #f0625a; }
 
+.filters {
+  display: flex; gap: 1.25rem; align-items: center;
+  margin-bottom: 1.25rem; font-size: 0.85rem; color: #9aa4b2;
+}
+.filters input[type="text"] {
+  background: #1a1d24; color: #e6e6e6;
+  border: 1px solid #2a2e37; border-radius: 6px; padding: 0.35rem 0.5rem;
+  font-size: 0.85rem; width: 20rem;
+}
+
 .plan-header-action { display: inline-block; margin-bottom: 1.5rem; }
+.header .btn-danger { margin-left: auto; }
+
+.rename-form { display: flex; align-items: center; gap: 0.5rem; }
+.rename-form input[type="text"] {
+  background: #1a1d24; color: #e6e6e6;
+  border: 1px solid #2a2e37; border-radius: 6px; padding: 0.3rem 0.6rem;
+  font-size: 1.1rem; font-weight: 600; width: 20rem; max-width: 100%;
+}
 
 .qty-form {
   display: flex; align-items: center; gap: 0.6rem;
@@ -14,6 +32,45 @@
 }
 .qty-form { flex-wrap: wrap; }
 
-/* Wider than the default .item-grid columns (card.css) - a plan job card's qty-form
-   (label + number input + Update + Remove) needs more room than a plain item card. */
-.job-grid { grid-template-columns: repeat(auto-fill, minmax(20rem, 24rem)); }
+/* Jobs stack full-width instead of wrapping in a card grid, so each job's tables get the
+   whole page's width to lay out side by side rather than being squeezed into a narrow card. */
+.job-list { display: flex; flex-direction: column; gap: 1rem; }
+.job-panel { width: 100%; }
+.job-panel-header {
+  display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 0.5rem;
+}
+.job-panel-header .item-title { margin-right: auto; }
+.job-panel-header .item-line {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem;
+}
+.job-panel-header .item-line .item-value { text-align: left; }
+.job-panel-header .item-line a { color: #4c8bf5; text-decoration: none; }
+.job-panel-header .item-line a:hover { text-decoration: underline; }
+.job-blueprint-efficiency { display: inline-flex; gap: 0.6rem; margin-left: 0.6rem; vertical-align: middle; }
+.structure-form {
+  display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+  font-size: 0.8rem; color: #9aa4b2; width: 100%;
+}
+.plan-structure-form { margin-bottom: 1.5rem; }
+.structure-form label { display: flex; align-items: center; gap: 0.35rem; cursor: pointer; }
+.structure-form select {
+  background: #1a1d24; color: #e6e6e6;
+  border: 1px solid #2a2e37; border-radius: 6px; padding: 0.25rem 0.4rem;
+  font-size: 0.8rem;
+}
+.job-panel-tables { display: flex; gap: 2rem; flex-wrap: wrap; align-items: flex-start; }
+.job-panel-column { flex: 1 1 20rem; min-width: 18rem; }
+
+.blueprint-picker-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-bottom: 1.5rem; }
+.blueprint-picker-table th, .blueprint-picker-table td {
+  text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #2a2e37;
+}
+.blueprint-picker-table th {
+  color: #9aa4b2; font-weight: 600; font-size: 0.7rem; text-transform: uppercase;
+}
+.blueprint-picker-table tr:hover td { background: #1a1d24; }
+.blueprint-picker-table .bp-name {
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.blueprint-picker-table .bp-name img { width: 24px; height: 24px; border-radius: 4px; flex-shrink: 0; }
+.picker-actions { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1.5rem; }

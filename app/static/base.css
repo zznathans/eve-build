@@ -75,4 +75,9 @@ a { color: inherit; }
   background: #2a2e37; overflow: hidden;
 }
 .mini-gauge-fill { height: 100%; border-radius: 3px; }
-.mini-gauge-text { font-size: 0.75rem; color: #9aa4b2; min-width: 2.6rem; text-align: right; }
+.mini-gauge-text {
+  font-size: 0.75rem; color: #9aa4b2; text-align: right;
+  flex: 0 0 5rem; font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mini-gauge-text-left { text-align: left; }

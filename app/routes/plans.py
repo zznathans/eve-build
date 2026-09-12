@@ -1,6 +1,8 @@
 import re
 from datetime import UTC, datetime
+from html import escape
 from typing import cast
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -12,9 +14,11 @@ from app.db.mongo import get_database
 from app.db.redis import get_redis
 from app.deps import get_current_character
 from app.models.character import CharacterDocument
-from app.services import build_chain, plan, sde
+from app.services import build_chain, character_data, locations, plan, sde
+from app.services.esi import BlueprintEntry
+from app.services.locations import resolve_container_chain
 from app.templating import templates
-from app.web import format_isk, item_icon_url
+from app.web import format_duration, format_isk, format_number, gauge_cell_html, item_icon_url
 
 router = APIRouter(prefix="/plans", tags=["plans"])
 
@@ -27,13 +31,150 @@ def _format_timestamp(value: datetime) -> str:
     return value.replace(tzinfo=UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
-def _material_view(material: build_chain.RawMaterial) -> dict[str, object]:
+def _material_bulk_status(type_id: int, resolutions: list[build_chain.BuildResolution]) -> str:
+    """Whether a material is currently built (a step in some job's chain), bought (raw in
+    some job's chain), or both ('mixed') across every job in the plan."""
+    built = any(step.type_id == type_id for resolution in resolutions for step in resolution.steps)
+    bought = any(
+        material.type_id == type_id
+        for resolution in resolutions
+        for material in resolution.raw_materials
+    )
+    if built and bought:
+        return "mixed"
+    return "build" if built else "buy"
+
+
+def _bulk_material_flag_html(type_id: int, status: str, plan_id: str, is_buildable: bool) -> str:
+    """Build/Buy toggle for the combined Bill of Materials page - unlike a single job's own
+    toggle, clicking either button here applies to every job in the plan at once (see
+    plan.set_build_flag_for_all_jobs), and the currently-consistent choice (if any) is shown
+    as a plain highlighted pill rather than a clickable link."""
+    if not is_buildable:
+        return '<span class="flag flag-buy">Bought</span>'
+
+    def _href(build: bool) -> str:
+        flag = "true" if build else "false"
+        return escape(f"/plans/{plan_id}/materials/{type_id}/build-set?build={flag}")
+
+    build_html = (
+        '<span class="flag flag-build">Build</span>'
+        if status == "build"
+        else f'<a class="flag flag-inactive" href="{_href(True)}">Build</a>'
+    )
+    buy_html = (
+        '<span class="flag flag-buy">Buy</span>'
+        if status == "buy"
+        else f'<a class="flag flag-inactive" href="{_href(False)}">Buy</a>'
+    )
+    return f'<div class="flag-toggle-group">{build_html}{buy_html}</div>'
+
+
+def _material_view(
+    material: build_chain.RawMaterial,
+    owned_by_type_id: dict[int, int],
+    *,
+    plan_id: str,
+    resolutions: list[build_chain.BuildResolution],
+) -> dict[str, object]:
+    owned = owned_by_type_id.get(material.type_id, 0)
+    percentage = 100.0 if material.quantity <= 0 else min(100.0, owned / material.quantity * 100)
+    status = _material_bulk_status(material.type_id, resolutions)
     return {
         "icon_url": item_icon_url(material.type_id),
         "name": material.name,
         "quantity": material.quantity,
         "value": format_isk(material.quantity * material.unit_price),
+        "availability_html": gauge_cell_html(
+            percentage,
+            format_number(material.quantity),
+            owned_text=format_number(owned),
+        ),
+        "flag_html": _bulk_material_flag_html(
+            material.type_id, status, plan_id, material.is_buildable
+        ),
     }
+
+
+def _step_view(
+    step: build_chain.BuildStep,
+    *,
+    plan_id: str,
+    resolutions: list[build_chain.BuildResolution],
+    target_type_ids: frozenset[int],
+) -> dict[str, object]:
+    """A row for the combined Build Steps table - the Buy toggle is omitted for a type_id
+    that's some job's own target, since resolve_build_chain always expands the target
+    regardless of build_set (toggling it to "buy" would silently do nothing)."""
+    flag_html = ""
+    if step.type_id not in target_type_ids:
+        status = _material_bulk_status(step.type_id, resolutions)
+        flag_html = _bulk_material_flag_html(step.type_id, status, plan_id, True)
+    return {
+        "icon_url": item_icon_url(step.type_id),
+        "name": step.name,
+        "runs": step.runs,
+        "quantity_needed": step.quantity_needed,
+        "flag_html": flag_html,
+    }
+
+
+def _job_flag_context(
+    resolution: build_chain.BuildResolution,
+    *,
+    plan_id: str,
+    job_id: str,
+    pi_type_ids: frozenset[int],
+) -> dict[str, list[dict[str, object]]]:
+    """Materials + build steps for one job on the plan detail page, with clickable
+    Build/Buy toggle links that edit the job's stored build_set in place (mirrors
+    app/routes/build.py's _build_resolution_context, but persists to the plan instead of
+    round-tripping through query-string state). Planetary materials are split into their
+    own list so the page can show them as a separate category from other raw materials."""
+
+    def _toggle_href(type_id: int, *, build: bool) -> str:
+        flag = "true" if build else "false"
+        return f"/plans/{plan_id}/jobs/{job_id}/build-set?type_id={type_id}&build={flag}"
+
+    def _buy_flag(step_type_id: int) -> str:
+        if step_type_id == resolution.target_type_id:
+            return ""
+        href = escape(_toggle_href(step_type_id, build=False))
+        return f'<a class="flag flag-buy-toggle" href="{href}">Buy</a>'
+
+    steps = [
+        {
+            "icon_url": item_icon_url(step.type_id),
+            "name": step.name,
+            "buy_flag_html": _buy_flag(step.type_id),
+            "runs": step.runs,
+            "quantity_needed": step.quantity_needed,
+        }
+        for step in resolution.steps
+    ]
+
+    def _material_flag(material: build_chain.RawMaterial) -> str:
+        if not material.is_buildable:
+            return '<span class="flag flag-buy">Bought</span>'
+        href = escape(_toggle_href(material.type_id, build=True))
+        return f'<a class="flag flag-build" href="{href}">Build</a>'
+
+    materials: list[dict[str, object]] = []
+    pi_materials: list[dict[str, object]] = []
+    for material in resolution.raw_materials:
+        view = {
+            "icon_url": item_icon_url(material.type_id),
+            "name": material.name,
+            "quantity": material.quantity,
+            "value": format_isk(material.quantity * material.unit_price),
+            "flag_html": _material_flag(material),
+        }
+        if material.type_id in pi_type_ids:
+            pi_materials.append(view)
+        else:
+            materials.append(view)
+
+    return {"materials": materials, "pi_materials": pi_materials, "steps": steps}
 
 
 @router.get("", response_class=HTMLResponse)
@@ -53,10 +194,12 @@ async def list_plans(
             {"character": character, "extra_stylesheets": _LIST_STYLE, "plans": []},
         )
 
-    target_type_ids = {
-        cast(int, cast(list[dict[str, object]], doc["jobs"])[0]["target_type_id"]) for doc in plans
+    all_target_type_ids = {
+        cast(int, job["target_type_id"])
+        for doc in plans
+        for job in cast(list[dict[str, object]], doc["jobs"])
     }
-    type_docs = await sde.type_docs(db, redis, settings, target_type_ids)
+    type_docs = await sde.type_docs(db, redis, settings, all_target_type_ids)
 
     def _name(type_id: int) -> str:
         return str(type_docs.get(type_id, {}).get("name", f"Type {type_id}"))
@@ -64,15 +207,23 @@ async def list_plans(
     plans_view = []
     for doc in plans:
         jobs = cast(list[dict[str, object]], doc["jobs"])
-        first_job_type_id = cast(int, jobs[0]["target_type_id"])
-        jobs_text = "1 job" if len(jobs) == 1 else f"{len(jobs)} jobs"
+        if not jobs:
+            jobs_text = "No jobs yet"
+        else:
+            jobs_text = "1 job" if len(jobs) == 1 else f"{len(jobs)} jobs"
         plans_view.append(
             {
                 "plan_id": doc["_id"],
-                "icon_url": item_icon_url(first_job_type_id),
-                "name": _name(first_job_type_id),
+                "name": str(doc.get("name") or "") or "Untitled Plan",
                 "jobs_text": jobs_text,
                 "created_at": _format_timestamp(cast(datetime, doc["created_at"])),
+                "job_icons": [
+                    {
+                        "icon_url": item_icon_url(cast(int, job["target_type_id"])),
+                        "name": _name(cast(int, job["target_type_id"])),
+                    }
+                    for job in jobs
+                ],
             }
         )
 
@@ -96,6 +247,15 @@ async def create_plan_from_build(
     return RedirectResponse(f"/plans/{plan_id}")
 
 
+@router.get("/new")
+async def new_plan(
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> RedirectResponse:
+    plan_id = await plan.create_empty_plan(db, character.character_id)
+    return RedirectResponse(f"/plans/{plan_id}/add-from-blueprints")
+
+
 @router.get("/{plan_id}/add-job")
 async def add_job_to_plan(
     plan_id: str,
@@ -111,6 +271,149 @@ async def add_job_to_plan(
     job_id = await plan.add_job(db, plan_id, character.character_id, type_id, qty, build_set)
     if job_id is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+    return RedirectResponse(f"/plans/{plan_id}")
+
+
+@router.get("/{plan_id}/add-from-blueprints", response_class=HTMLResponse)
+async def add_from_blueprints(
+    request: Request,
+    plan_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    redis: Redis | None = Depends(get_redis),
+    settings: Settings = Depends(get_settings),
+    search: str = Query(default=""),
+) -> HTMLResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    if await plan.get_plan(db, plan_id, character.character_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+
+    search_query = search.strip().lower()
+
+    blueprints, corp_included = await character_data.get_merged_blueprints(
+        db, redis, settings, character
+    )
+    if not blueprints:
+        return templates.TemplateResponse(
+            request,
+            "plans/add_from_blueprints.html",
+            {
+                "character": character,
+                "extra_stylesheets": _DETAIL_STYLE,
+                "plan_id": plan_id,
+                "search": search,
+                "corp_note": "",
+                "rows": [],
+                "blueprints_exist": False,
+            },
+        )
+
+    sde_by_type_id = await sde.blueprint_docs(
+        db, redis, settings, {bp.type_id for bp in blueprints}
+    )
+    product_type_ids = {
+        cast(int, sde_doc["product_type_id"])
+        for sde_doc in sde_by_type_id.values()
+        if sde_doc.get("product_type_id") is not None
+    }
+    type_docs = await sde.type_docs(
+        db, redis, settings, {bp.type_id for bp in blueprints} | product_type_ids
+    )
+
+    def _name(type_id: int) -> str:
+        return str(type_docs.get(type_id, {}).get("name", f"Type {type_id}"))
+
+    rows = []
+    for bp in blueprints:
+        sde_doc = sde_by_type_id.get(bp.type_id)
+        product_type_id = sde_doc.get("product_type_id") if sde_doc is not None else None
+        if product_type_id is None:
+            continue
+        name = _name(bp.type_id)
+        if search_query and search_query not in name.lower():
+            continue
+        product_quantity = cast(int, sde_doc.get("product_quantity", 1)) if sde_doc else 1
+
+        is_copy = bp.quantity == -2 or bp.runs != -1
+        status_text = "Copy" if is_copy else "Original"
+        if is_copy:
+            status_text += f" &middot; {bp.runs} runs"
+
+        rows.append(
+            {
+                "item_id": bp.item_id,
+                "product_type_id": product_type_id,
+                "product_quantity": product_quantity,
+                "icon_url": item_icon_url(cast(int, product_type_id)),
+                "name": name,
+                "status_text": status_text,
+                "me_gauge": gauge_cell_html(
+                    100.0 * bp.material_efficiency / 10, f"{bp.material_efficiency}/10"
+                ),
+                "te_gauge": gauge_cell_html(
+                    100.0 * bp.time_efficiency / 20, f"{bp.time_efficiency}/20"
+                ),
+            }
+        )
+    rows.sort(key=lambda row: cast(str, row["name"]).lower())
+
+    return templates.TemplateResponse(
+        request,
+        "plans/add_from_blueprints.html",
+        {
+            "character": character,
+            "extra_stylesheets": _DETAIL_STYLE,
+            "plan_id": plan_id,
+            "search": search,
+            "corp_note": "Includes corporation blueprints." if corp_included else "",
+            "rows": rows,
+            "blueprints_exist": True,
+        },
+    )
+
+
+@router.get("/{plan_id}/add-from-blueprints/add")
+async def add_jobs_from_blueprints(
+    plan_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    redis: Redis | None = Depends(get_redis),
+    settings: Settings = Depends(get_settings),
+    item_id: list[int] = Query(default=[]),
+) -> RedirectResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    if await plan.get_plan(db, plan_id, character.character_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+
+    if item_id:
+        selected_item_ids = frozenset(item_id)
+        blueprints, _ = await character_data.get_merged_blueprints(db, redis, settings, character)
+        selected_blueprints = [bp for bp in blueprints if bp.item_id in selected_item_ids]
+        sde_by_type_id = await sde.blueprint_docs(
+            db, redis, settings, {bp.type_id for bp in selected_blueprints}
+        )
+        for bp in selected_blueprints:
+            sde_doc = sde_by_type_id.get(bp.type_id)
+            product_type_id = sde_doc.get("product_type_id") if sde_doc is not None else None
+            if product_type_id is None:
+                continue
+            product_quantity = cast(int, sde_doc.get("product_quantity", 1)) if sde_doc else 1
+            # bp.runs is -1 for an original (unlimited runs, so there's no "remaining runs"
+            # total to default to - just one run's worth); for a copy it's the number of
+            # runs left on it, so default to using up all of them.
+            runs_remaining = bp.runs if bp.runs != -1 else 1
+            await plan.add_job(
+                db,
+                plan_id,
+                character.character_id,
+                cast(int, product_type_id),
+                product_quantity * runs_remaining,
+                frozenset(),
+                blueprint_item_id=bp.item_id,
+            )
+
     return RedirectResponse(f"/plans/{plan_id}")
 
 
@@ -133,6 +436,170 @@ async def update_job_quantity(
     return RedirectResponse(f"/plans/{safe_plan_id}")
 
 
+_RIG_TIERS = frozenset({"t1", "t2"})
+_SECURITY_BANDS = frozenset({"high", "low", "null_wh"})
+
+
+@router.get("/{plan_id}/jobs/{job_id}/structure")
+async def set_job_structure(
+    plan_id: str,
+    job_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    has_engineering_complex: bool = Query(default=False),
+    rig_tier: str = Query(default=""),
+    security_band: str = Query(default="high"),
+) -> RedirectResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    if not _PLAN_ID_RE.fullmatch(job_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid job id")
+    if security_band not in _SECURITY_BANDS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid security band")
+    normalized_rig_tier = rig_tier if rig_tier in _RIG_TIERS else None
+    updated = await plan.update_job_structure(
+        db,
+        plan_id,
+        character.character_id,
+        job_id,
+        has_engineering_complex,
+        normalized_rig_tier,
+        security_band,
+    )
+    if not updated:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan or job not found")
+    return RedirectResponse(f"/plans/{plan_id}")
+
+
+@router.get("/{plan_id}/jobs/{job_id}/structure/detect")
+async def detect_job_structure(
+    plan_id: str,
+    job_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    redis: Redis | None = Depends(get_redis),
+    settings: Settings = Depends(get_settings),
+) -> RedirectResponse:
+    """Best-effort: resolves the structure a job's linked blueprint currently sits in and
+    fills in Engineering Complex + security band from it (rig tier can't be auto-detected -
+    see the eve-build session notes on GetIndustryFacilities/corp-structure scopes). Silently
+    leaves the job's structure settings unchanged if the blueprint isn't linked, isn't found,
+    or the location can't be resolved (e.g. no docking rights on that structure) - this is an
+    optional shortcut, not a required step, so it fails quietly rather than erroring out."""
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    if not _PLAN_ID_RE.fullmatch(job_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid job id")
+    doc = await plan.get_plan(db, plan_id, character.character_id)
+    if doc is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+
+    jobs = cast(list[dict[str, object]], doc["jobs"])
+    job = next((j for j in jobs if j["job_id"] == job_id), None)
+    if job is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Job not found")
+
+    blueprint_item_id = job.get("blueprint_item_id")
+    if blueprint_item_id:
+        owned_blueprints, _ = await character_data.get_merged_blueprints(
+            db, redis, settings, character
+        )
+        blueprint = next((bp for bp in owned_blueprints if bp.item_id == blueprint_item_id), None)
+        if blueprint is not None:
+            assets, _ = await character_data.get_merged_assets(db, redis, settings, character)
+            assets_by_item_id = {asset.item_id: asset for asset in assets}
+            resolved_location_id = resolve_container_chain(blueprint.location_id, assets_by_item_id)
+            location_info = await locations.resolve_location_info(
+                db, redis, settings, character.access_token, {resolved_location_id}
+            )
+            info = location_info.get(resolved_location_id)
+            if info is not None and info.type_id is not None:
+                type_docs = await sde.type_docs(db, redis, settings, {info.type_id})
+                group_id = type_docs.get(info.type_id, {}).get("group_id")
+                has_engineering_complex = group_id == build_chain.ENGINEERING_COMPLEX_GROUP_ID
+                security_band = build_chain.security_band_for_status(
+                    info.security_status if info.security_status is not None else 1.0
+                )
+                await plan.update_job_structure(
+                    db,
+                    plan_id,
+                    character.character_id,
+                    job_id,
+                    has_engineering_complex,
+                    cast(str | None, job.get("rig_tier")),
+                    security_band,
+                )
+
+    return RedirectResponse(f"/plans/{plan_id}")
+
+
+@router.get("/{plan_id}/structure")
+async def set_plan_structure(
+    plan_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    has_engineering_complex: bool = Query(default=False),
+    rig_tier: str = Query(default=""),
+    security_band: str = Query(default="high"),
+) -> RedirectResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    if security_band not in _SECURITY_BANDS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid security band")
+    normalized_rig_tier = rig_tier if rig_tier in _RIG_TIERS else None
+    updated = await plan.set_structure_for_all_jobs(
+        db,
+        plan_id,
+        character.character_id,
+        has_engineering_complex,
+        normalized_rig_tier,
+        security_band,
+    )
+    if not updated:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+    return RedirectResponse(f"/plans/{plan_id}")
+
+
+@router.get("/{plan_id}/jobs/{job_id}/build-set")
+async def set_job_build_flag(
+    plan_id: str,
+    job_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    type_id: int = Query(...),
+    build: bool = Query(...),
+) -> RedirectResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    if not _PLAN_ID_RE.fullmatch(job_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid job id")
+    updated = await plan.update_job_build_flag(
+        db, plan_id, character.character_id, job_id, type_id, build
+    )
+    if not updated:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan or job not found")
+    safe_plan_id = quote(plan_id, safe="")
+    return RedirectResponse(f"/plans/{safe_plan_id}")
+
+
+@router.get("/{plan_id}/materials/{type_id}/build-set")
+async def set_material_build_flag_for_all_jobs(
+    plan_id: str,
+    type_id: int,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    build: bool = Query(...),
+) -> RedirectResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    updated = await plan.set_build_flag_for_all_jobs(
+        db, plan_id, character.character_id, type_id, build
+    )
+    if not updated:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+    return RedirectResponse(f"/plans/{plan_id}")
+
+
 @router.get("/{plan_id}/jobs/{job_id}/delete")
 async def remove_job_from_plan(
     plan_id: str,
@@ -152,6 +619,35 @@ async def remove_job_from_plan(
     return RedirectResponse(f"/plans/{plan_id}")
 
 
+@router.get("/{plan_id}/rename")
+async def rename_plan(
+    plan_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    name: str = Query(default="", max_length=100),
+) -> RedirectResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    renamed = await plan.rename_plan(db, plan_id, character.character_id, name.strip())
+    if not renamed:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+    return RedirectResponse(f"/plans/{plan_id}")
+
+
+@router.get("/{plan_id}/delete")
+async def delete_plan(
+    plan_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> RedirectResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    deleted = await plan.delete_plan(db, plan_id, character.character_id)
+    if not deleted:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+    return RedirectResponse("/plans")
+
+
 @router.get("/{plan_id}", response_class=HTMLResponse)
 async def plan_detail(
     request: Request,
@@ -166,17 +662,56 @@ async def plan_detail(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
 
     jobs = cast(list[dict[str, object]], doc["jobs"])
-    resolutions = [
-        await build_chain.resolve_build_chain(
-            db,
-            redis,
-            settings,
-            cast(int, job["target_type_id"]),
-            cast(int, job["target_quantity"]),
-            frozenset(cast(list[int], job["build_set"])),
+
+    job_blueprint_item_ids = {
+        cast(int, job["blueprint_item_id"]) for job in jobs if job.get("blueprint_item_id")
+    }
+    blueprint_link_by_item_id: dict[int, dict[str, object]] = {}
+    blueprint_by_item_id: dict[int, BlueprintEntry] = {}
+    if job_blueprint_item_ids:
+        owned_blueprints, _ = await character_data.get_merged_blueprints(
+            db, redis, settings, character
         )
-        for job in jobs
-    ]
+        blueprint_by_item_id = {
+            bp.item_id: bp for bp in owned_blueprints if bp.item_id in job_blueprint_item_ids
+        }
+        blueprint_type_docs = await sde.type_docs(
+            db, redis, settings, {bp.type_id for bp in blueprint_by_item_id.values()}
+        )
+        for item_id, bp in blueprint_by_item_id.items():
+            name = str(blueprint_type_docs.get(bp.type_id, {}).get("name", f"Type {bp.type_id}"))
+            blueprint_link_by_item_id[item_id] = {
+                "item_id": item_id,
+                "name": name,
+                "me_gauge": gauge_cell_html(
+                    100.0 * bp.material_efficiency / 10, f"{bp.material_efficiency}/10"
+                ),
+                "te_gauge": gauge_cell_html(
+                    100.0 * bp.time_efficiency / 20, f"{bp.time_efficiency}/20"
+                ),
+            }
+
+    resolutions = []
+    for job in jobs:
+        blueprint = blueprint_by_item_id.get(cast(int, job.get("blueprint_item_id") or 0))
+        structure_bonus = build_chain.structure_material_bonus(
+            bool(job.get("has_engineering_complex")),
+            cast(str | None, job.get("rig_tier")),
+            cast(str, job.get("security_band") or "high"),
+        )
+        resolutions.append(
+            await build_chain.resolve_build_chain(
+                db,
+                redis,
+                settings,
+                cast(int, job["target_type_id"]),
+                cast(int, job["target_quantity"]),
+                frozenset(cast(list[int], job["build_set"])),
+                material_efficiency=blueprint.material_efficiency if blueprint else 0,
+                time_efficiency=blueprint.time_efficiency if blueprint else 0,
+                structure_bonus=structure_bonus,
+            )
+        )
 
     total_cost = sum(resolution.raw_material_cost for resolution in resolutions)
     total_value = sum(resolution.output_value for resolution in resolutions)
@@ -187,23 +722,76 @@ async def plan_detail(
         "job_count": str(len(resolutions)),
     }
 
+    combined_materials = build_chain.aggregate_raw_materials(resolutions)
+    combined_steps = build_chain.aggregate_build_steps(resolutions)
+    target_type_ids = frozenset(resolution.target_type_id for resolution in resolutions)
+
+    all_material_type_ids = {
+        material.type_id for resolution in resolutions for material in resolution.raw_materials
+    }
+    type_docs = await sde.type_docs(db, redis, settings, all_material_type_ids)
+    pi_type_ids = frozenset(
+        type_id
+        for type_id in all_material_type_ids
+        if type_docs.get(type_id, {}).get("category_id") in sde.PLANETARY_MATERIAL_CATEGORY_IDS
+    )
+
     jobs_view = []
     for job, resolution in zip(jobs, resolutions, strict=True):
+        job_id = cast(str, job["job_id"])
         job_profit = resolution.output_value - resolution.raw_material_cost
+        flag_context = _job_flag_context(
+            resolution, plan_id=plan_id, job_id=job_id, pi_type_ids=pi_type_ids
+        )
+        blueprint_item_id = job.get("blueprint_item_id")
         jobs_view.append(
             {
-                "job_id": job["job_id"],
+                "job_id": job_id,
                 "icon_url": item_icon_url(resolution.target_type_id),
                 "target_name": resolution.target_name,
                 "target_quantity": resolution.target_quantity,
                 "delete_enabled": len(jobs) > 1,
                 "cost": format_isk(resolution.raw_material_cost),
                 "profit": format_isk(job_profit),
-                "materials": [_material_view(m) for m in resolution.raw_materials],
+                "build_time": (
+                    format_duration(resolution.build_time_seconds)
+                    if resolution.build_time_seconds
+                    else None
+                ),
+                "materials": flag_context["materials"],
+                "pi_materials": flag_context["pi_materials"],
+                "steps": flag_context["steps"],
+                "blueprint_link": (
+                    blueprint_link_by_item_id.get(cast(int, blueprint_item_id))
+                    if blueprint_item_id
+                    else None
+                ),
+                "structure": {
+                    "has_engineering_complex": bool(job.get("has_engineering_complex")),
+                    "rig_tier": job.get("rig_tier") or "",
+                    "security_band": job.get("security_band") or "high",
+                },
             }
         )
 
-    combined_materials = build_chain.aggregate_raw_materials(resolutions)
+    assets, _ = await character_data.get_merged_assets(db, redis, settings, character)
+    owned_by_type_id: dict[int, int] = {}
+    for asset in assets:
+        owned_by_type_id[asset.type_id] = owned_by_type_id.get(asset.type_id, 0) + asset.quantity
+
+    combined_materials_view = []
+    combined_pi_materials_view = []
+    for material in combined_materials:
+        view = _material_view(material, owned_by_type_id, plan_id=plan_id, resolutions=resolutions)
+        if material.type_id in pi_type_ids:
+            combined_pi_materials_view.append(view)
+        else:
+            combined_materials_view.append(view)
+
+    combined_steps_view = [
+        _step_view(step, plan_id=plan_id, resolutions=resolutions, target_type_ids=target_type_ids)
+        for step in combined_steps
+    ]
 
     return templates.TemplateResponse(
         request,
@@ -212,9 +800,12 @@ async def plan_detail(
             "character": character,
             "extra_stylesheets": _DETAIL_STYLE,
             "plan_id": plan_id,
+            "name": str(doc.get("name") or ""),
             "created_at": _format_timestamp(cast(datetime, doc["created_at"])),
             "stats": stats,
             "jobs": jobs_view,
-            "combined_materials": [_material_view(m) for m in combined_materials],
+            "combined_steps": combined_steps_view,
+            "combined_materials": combined_materials_view,
+            "combined_pi_materials": combined_pi_materials_view,
         },
     )

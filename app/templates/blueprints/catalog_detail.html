@@ -19,10 +19,6 @@
     {{ summary_stat(stat.value, stat.label) }}
     {% endfor %}
   </div>
-  {% if build_href %}
-  <a class="btn btn-primary" href="{{ build_href }}">Build this</a>
-  {% endif %}
-
   {% if materials %}
   <div class="section-box">
     <h2>Materials</h2>

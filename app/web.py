@@ -31,12 +31,24 @@ def gauge_color(percentage: float) -> str:
     return "#f0625a"
 
 
-def gauge_cell_html(percentage: float, value_text: str | None = None) -> str:
+def gauge_cell_html(
+    percentage: float, value_text: str | None = None, *, owned_text: str | None = None
+) -> str:
+    """Renders a bar gauge. value_text (right of the bar) defaults to a percentage; pass
+    owned_text too (e.g. for an "owned vs needed" comparison) to also show a fixed-width
+    label to the left of the bar - both text slots are fixed-width so the bar itself is the
+    same length on every row of a table, regardless of how many digits either value has."""
     clamped = min(100.0, max(0.0, percentage))
     color = gauge_color(percentage)
     text = value_text if value_text is not None else f"{percentage:.0f}%"
+    owned_html = (
+        f'<span class="mini-gauge-text mini-gauge-text-left">{owned_text}</span>'
+        if owned_text is not None
+        else ""
+    )
     return f"""
       <div class="mini-gauge">
+        {owned_html}
         <div class="mini-gauge-track">
           <div class="mini-gauge-fill" style="width: {clamped:.0f}%; background: {color};"></div>
         </div>
@@ -71,6 +83,22 @@ def format_isk(value: float) -> str:
     if abs_value >= 1_000:
         return f"{value / 1_000:,.1f}K ISK"
     return f"{value:,.0f} ISK"
+
+
+def format_duration(seconds: float) -> str:
+    total_seconds = max(0, round(seconds))
+    days, remainder = divmod(total_seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes = remainder // 60
+
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes or not parts:
+        parts.append(f"{minutes}m")
+    return " ".join(parts)
 
 
 def security_status_color(security_status: float) -> str:

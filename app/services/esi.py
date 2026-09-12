@@ -464,6 +464,7 @@ async def get_market_prices(settings: Settings) -> list[MarketPriceEntry]:
 class LocationDetails:
     name: str | None
     system_id: int | None
+    type_id: int | None = None
 
 
 async def get_location_details(
@@ -484,14 +485,16 @@ async def get_location_details(
                 client, f"{settings.esi_base_url}{path}", endpoint=endpoint, headers=headers
             )
         except httpx.HTTPStatusError:
-            return LocationDetails(name=None, system_id=None)
+            return LocationDetails(name=None, system_id=None, type_id=None)
 
     data = response.json()
     name = data.get("name")
     system_id = data.get("system_id")
+    type_id = data.get("type_id")
     return LocationDetails(
         name=name if isinstance(name, str) else None,
         system_id=system_id if isinstance(system_id, int) else None,
+        type_id=type_id if isinstance(type_id, int) else None,
     )
 
 

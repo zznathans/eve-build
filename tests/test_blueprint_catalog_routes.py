@@ -147,7 +147,6 @@ async def test_catalog_detail_shows_recipe_and_profit(
     # Cost/run: 100 Tritanium * 5.0 ISK = 500 ISK. Output/run: 1 Rifter * 1000.0 ISK = 1000 ISK.
     assert "500 ISK" in response.text
     assert "1.0K ISK" in response.text
-    assert f'href="/build/items/{RIFTER_TYPE_ID}"' in response.text
 
 
 @respx.mock
