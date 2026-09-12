@@ -210,14 +210,14 @@ tests:
           value: "-2"
         template: market-prices-rabbitmq-secret.yaml
 
-  - it: syncs the TriggerAuthentication after the workers (wave 2)
+  - it: syncs the TriggerAuthentication right after its secret (wave -1) - it has no dependency on the app or workers
     set:
       rabbitmq.enabled: true
       keda.enabled: true
     asserts:
       - equal:
           path: metadata.annotations["argocd.argoproj.io/sync-wave"]
-          value: "2"
+          value: "-1"
         template: market-prices-keda-triggerauth.yaml
 
   - it: syncs both ScaledObjects last (wave 3)
