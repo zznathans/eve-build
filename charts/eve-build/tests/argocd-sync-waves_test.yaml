@@ -7,6 +7,7 @@ templates:
   - service-account.yaml
   - redis.yaml
   - mongodb.yaml
+  - rabbitmq.yaml
   - market-prices-dispatch-cronjob.yaml
   - market-prices-fetch-worker.yaml
   - market-prices-write-worker.yaml
@@ -14,6 +15,7 @@ set:
   eveBuild.marketPrices.refreshApiKey: my-api-key
   eveBuild.session.secretKey: my-session-key
   rabbitmq.enabled: true
+  rabbitmq.deploy: true
   mongodb.enabled: true
   redis.enabled: true
 tests:
@@ -43,6 +45,10 @@ tests:
           value: "-1"
         documentIndex: 1
         template: mongodb.yaml
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "-1"
+        template: rabbitmq.yaml
 
   - it: syncs the app Deployment and Service after datastores (wave 0)
     asserts:

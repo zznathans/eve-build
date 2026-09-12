@@ -498,13 +498,39 @@ redis:
 
 rabbitmq:
   # -- Enable RabbitMQ connectivity for the app (sets RABBITMQ_ENABLED and
-  # wires up RABBITMQ_URL below). This chart does not deploy RabbitMQ itself -
-  # point `url` (or `existingSecret`) at an external/managed RabbitMQ
-  # instance. Leave disabled if the app has no messaging use yet.
+  # wires up RABBITMQ_URL below). Leave disabled if the app has no messaging
+  # use yet. Point `url` (or `existingSecret`) at wherever RabbitMQ actually
+  # runs - either an external/managed instance, or the RabbitmqCluster this
+  # chart can provision itself when `deploy` is also true.
   enabled: false
 
+  # -- Deploy a RabbitmqCluster custom resource (named
+  # "<release-name>-rabbitmq") for this release. Requires the RabbitMQ
+  # Cluster Operator (https://github.com/rabbitmq/cluster-operator) already
+  # installed in the cluster - this chart only creates the CR, not the
+  # operator itself. Ignored when `enabled` is false. Leave false to instead
+  # point `url`/`existingSecret` at an external/managed RabbitMQ instance.
+  deploy: false
+  # -- RabbitMQ replica count for the self-deployed cluster.
+  replicas: 1
+  # -- Storage requested per node's PersistentVolumeClaim, for the
+  # self-deployed cluster.
+  storage: 5Gi
+  # -- StorageClass for the self-deployed cluster's PersistentVolumeClaims.
+  storageClassName: do-block-storage-xfs
+  # -- Resource requests and limits for the self-deployed cluster's rabbitmq
+  # container.
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+
   # -- AMQP connection URL for the app to use when `existingSecret` isn't
-  # set - e.g. an external/managed RabbitMQ instance.
+  # set - e.g. an external/managed RabbitMQ instance, or the self-deployed
+  # cluster's Service (<release-name>-rabbitmq.<namespace>.svc.cluster.local).
   url: "amqp://guest:guest@localhost:5672/"
   # -- Name of an existing Secret holding the AMQP connection URL, used
   # instead of `url` when set - e.g. via External Secrets.

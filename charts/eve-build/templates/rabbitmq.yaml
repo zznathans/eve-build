@@ -1,0 +1,37 @@
+{{- if and .Values.rabbitmq.enabled .Values.rabbitmq.deploy }}
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: {{ .Release.Name }}-rabbitmq
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  replicas: {{ .Values.rabbitmq.replicas }}
+  resources:
+    {{- toYaml .Values.rabbitmq.resources | nindent 4 }}
+  rabbitmq:
+    additionalPlugins:
+      - rabbitmq_prometheus
+    additionalConfig: |
+      default_user=guest
+      default_pass=guest
+      prometheus.return_per_object_metrics=true
+  persistence:
+    storageClassName: {{ .Values.rabbitmq.storageClassName }}
+    storage: {{ .Values.rabbitmq.storage }}
+  override:
+    statefulSet:
+      spec:
+        template:
+          metadata:
+            # rabbitmq_prometheus (above) exposes /metrics on the
+            # "prometheus" container port (15692), but the operator doesn't
+            # set the annotation Alloy's scrape convention looks for -
+            # without this, these pods are never actually scraped despite
+            # the plugin being on.
+            annotations:
+              prometheus.io/scrape: "true"
+              prometheus.io/port: "15692"
+              prometheus.io/path: /metrics
+{{- end }}
