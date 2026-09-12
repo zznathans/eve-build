@@ -1,3 +1,4 @@
+import pytest
 from mongomock_motor import AsyncMongoMockClient
 
 from app.core.config import Settings
@@ -6,6 +7,7 @@ from app.services.build_chain import (
     aggregate_raw_materials,
     material_quantity_per_run,
     resolve_build_chain,
+    structure_material_bonus,
 )
 
 TRITANIUM_TYPE_ID = 34
@@ -573,3 +575,56 @@ async def test_aggregate_build_steps_sums_runs_for_a_shared_component_across_res
     assert by_type_id[COMPONENT_TYPE_ID].quantity_needed == 3
     assert by_type_id[SHIP_TYPE_ID].runs == 1
     assert by_type_id[MODULE_TYPE_ID].runs == 1
+
+
+def test_structure_material_bonus_is_zero_without_an_engineering_complex() -> None:
+    assert structure_material_bonus(False, "t2", "null_wh") == 0.0
+    assert structure_material_bonus(False, None, "high") == 0.0
+
+
+def test_structure_material_bonus_facility_only() -> None:
+    assert structure_material_bonus(True, None, "high") == pytest.approx(0.01)
+
+
+def test_structure_material_bonus_stacks_facility_and_rig_multiplicatively() -> None:
+    # Facility 1% + T1 rig 2% in highsec: 1 - (1 - 0.01) * (1 - 0.02) = 0.0298.
+    assert structure_material_bonus(True, "t1", "high") == pytest.approx(0.0298)
+    # Facility 1% + T2 rig 2.4% in null/wormhole (2.4% * 2.1 = 5.04% rig bonus):
+    # 1 - (1 - 0.01) * (1 - 0.0504) = 0.059896.
+    assert structure_material_bonus(True, "t2", "null_wh") == pytest.approx(0.059896)
+    # Facility 1% + T1 rig 2% in lowsec (2% * 1.9 = 3.8% rig bonus):
+    # 1 - (1 - 0.01) * (1 - 0.038) = 0.04762.
+    assert structure_material_bonus(True, "t1", "low") == pytest.approx(0.04762)
+
+
+async def test_resolve_build_chain_applies_structure_bonus_to_the_targets_own_recipe(
+    mongo_db: AsyncMongoMockClient, test_settings: Settings
+) -> None:
+    await _seed_names(
+        mongo_db,
+        [
+            {"_id": SHIP_TYPE_ID, "name": "Test Ship", "published": True},
+            {"_id": TRITANIUM_TYPE_ID, "name": "Tritanium", "published": True},
+        ],
+    )
+    await mongo_db.sde_blueprints.insert_one(
+        {
+            "_id": SHIP_BLUEPRINT_TYPE_ID,
+            "product_type_id": SHIP_TYPE_ID,
+            "product_quantity": 1,
+            "materials": [{"type_id": TRITANIUM_TYPE_ID, "quantity": 100}],
+            "activity_id": 1,
+        }
+    )
+
+    resolution = await resolve_build_chain(
+        mongo_db,
+        None,
+        test_settings,
+        SHIP_TYPE_ID,
+        1,
+        structure_bonus=structure_material_bonus(True, "t2", "null_wh"),
+    )
+
+    # 100 * (1 - 0.059896) = 94.0104 -> ceil -> 95.
+    assert resolution.raw_materials[0].quantity == 95

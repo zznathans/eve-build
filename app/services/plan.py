@@ -17,6 +17,11 @@ def _job_doc(
         "target_quantity": target_quantity,
         "build_set": sorted(build_set),
         "blueprint_item_id": blueprint_item_id,
+        # Where this job is planned to be built - feeds build_chain.structure_material_bonus.
+        # Defaults to a plain NPC station/Citadel (no structure material bonus).
+        "has_engineering_complex": False,
+        "rig_tier": None,
+        "security_band": "high",
     }
 
 
@@ -137,6 +142,34 @@ async def update_job_build_flag(
     result = await db.plans.update_one(
         {"_id": plan_id, "character_id": character_id, "jobs.job_id": job_id},
         {"$set": {"jobs.$.build_set": sorted(build_set), "updated_at": now}},
+    )
+    return result.matched_count > 0
+
+
+async def update_job_structure(
+    db: AsyncIOMotorDatabase,
+    plan_id: str,
+    character_id: int,
+    job_id: str,
+    has_engineering_complex: bool,
+    rig_tier: str | None,
+    security_band: str,
+) -> bool:
+    """Sets which structure a job is planned to be built in - feeds
+    build_chain.structure_material_bonus next time the plan is viewed. Returns False if the
+    plan/job doesn't exist or isn't owned by this character (the route turns that into a
+    404)."""
+    now = datetime.now(UTC).replace(tzinfo=None)
+    result = await db.plans.update_one(
+        {"_id": plan_id, "character_id": character_id, "jobs.job_id": job_id},
+        {
+            "$set": {
+                "jobs.$.has_engineering_complex": has_engineering_complex,
+                "jobs.$.rig_tier": rig_tier,
+                "jobs.$.security_band": security_band,
+                "updated_at": now,
+            }
+        },
     )
     return result.matched_count > 0
 

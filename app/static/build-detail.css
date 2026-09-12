@@ -47,6 +47,16 @@
 .job-panel-header .item-line a { color: #4c8bf5; text-decoration: none; }
 .job-panel-header .item-line a:hover { text-decoration: underline; }
 .job-blueprint-efficiency { display: inline-flex; gap: 0.6rem; margin-left: 0.6rem; vertical-align: middle; }
+.structure-form {
+  display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+  font-size: 0.8rem; color: #9aa4b2; width: 100%;
+}
+.structure-form label { display: flex; align-items: center; gap: 0.35rem; cursor: pointer; }
+.structure-form select {
+  background: #1a1d24; color: #e6e6e6;
+  border: 1px solid #2a2e37; border-radius: 6px; padding: 0.25rem 0.4rem;
+  font-size: 0.8rem;
+}
 .job-panel-tables { display: flex; gap: 2rem; flex-wrap: wrap; align-items: flex-start; }
 .job-panel-column { flex: 1 1 20rem; min-width: 18rem; }
 

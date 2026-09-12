@@ -14,6 +14,7 @@ from app.services.plan import (
     set_build_flag_for_all_jobs,
     update_job_build_flag,
     update_job_quantity,
+    update_job_structure,
 )
 
 CHARACTER_ID = 555
@@ -35,6 +36,9 @@ async def test_create_plan_inserts_expected_fields(mongo_db: AsyncMongoMockClien
     assert job["target_type_id"] == SHIP_TYPE_ID
     assert job["target_quantity"] == 3
     assert job["build_set"] == [57478, 57479]
+    assert job["has_engineering_complex"] is False
+    assert job["rig_tier"] is None
+    assert job["security_band"] == "high"
     assert doc["created_at"] is not None
     assert doc["updated_at"] == doc["created_at"]
 
@@ -221,6 +225,53 @@ async def test_update_job_build_flag_returns_false_for_a_different_owner(
     unchanged = await get_plan(mongo_db, plan_id, CHARACTER_ID)
     assert unchanged is not None
     assert unchanged["jobs"][0]["build_set"] == []
+
+
+async def test_update_job_structure_sets_the_fields(mongo_db: AsyncMongoMockClient) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+    job_id = await add_job(mongo_db, plan_id, CHARACTER_ID, MODULE_TYPE_ID, 2, frozenset())
+    assert job_id is not None
+
+    result = await update_job_structure(mongo_db, plan_id, CHARACTER_ID, job_id, True, "t2", "low")
+
+    assert result is True
+    doc = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert doc is not None
+    # Only the targeted job (index 1) changes; the first job keeps its defaults.
+    assert doc["jobs"][0]["has_engineering_complex"] is False
+    assert doc["jobs"][1]["has_engineering_complex"] is True
+    assert doc["jobs"][1]["rig_tier"] == "t2"
+    assert doc["jobs"][1]["security_band"] == "low"
+
+
+async def test_update_job_structure_returns_false_for_unknown_job(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+
+    result = await update_job_structure(
+        mongo_db, plan_id, CHARACTER_ID, "nonexistent", True, "t1", "high"
+    )
+
+    assert result is False
+
+
+async def test_update_job_structure_returns_false_for_a_different_owner(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+    doc = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert doc is not None
+    job_id = doc["jobs"][0]["job_id"]
+
+    result = await update_job_structure(
+        mongo_db, plan_id, OTHER_CHARACTER_ID, job_id, True, "t1", "high"
+    )
+
+    assert result is False
+    unchanged = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert unchanged is not None
+    assert unchanged["jobs"][0]["has_engineering_complex"] is False
 
 
 async def test_set_build_flag_for_all_jobs_adds_material_to_every_job(

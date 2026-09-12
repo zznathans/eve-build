@@ -605,6 +605,139 @@ async def test_update_job_quantity_404s_for_unknown_job(
 
 
 @respx.mock
+async def test_set_job_structure_requires_login(client: TestClient) -> None:
+    response = client.get(
+        "/plans/some-plan/jobs/some-job/structure",
+        params={"has_engineering_complex": "true", "rig_tier": "t1", "security_band": "high"},
+    )
+
+    assert response.status_code == 401
+
+
+@respx.mock
+async def test_set_job_structure_updates_the_job_and_redirects_back(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    job_id = doc["jobs"][0]["job_id"]
+
+    response = client.get(
+        f"/plans/{plan_id}/jobs/{job_id}/structure",
+        params={"has_engineering_complex": "true", "rig_tier": "t2", "security_band": "null_wh"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code in (302, 303, 307)
+    assert response.headers["location"] == f"/plans/{plan_id}"
+    updated = await mongo_db.plans.find_one({"_id": plan_id})
+    assert updated is not None
+    assert updated["jobs"][0]["has_engineering_complex"] is True
+    assert updated["jobs"][0]["rig_tier"] == "t2"
+    assert updated["jobs"][0]["security_band"] == "null_wh"
+
+
+@respx.mock
+async def test_set_job_structure_unchecked_box_clears_the_flag(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    job_id = doc["jobs"][0]["job_id"]
+    client.get(
+        f"/plans/{plan_id}/jobs/{job_id}/structure",
+        params={"has_engineering_complex": "true", "rig_tier": "t1", "security_band": "high"},
+    )
+
+    # An unchecked checkbox isn't submitted at all by a browser form.
+    response = client.get(
+        f"/plans/{plan_id}/jobs/{job_id}/structure",
+        params={"rig_tier": "t1", "security_band": "high"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code in (302, 303, 307)
+    updated = await mongo_db.plans.find_one({"_id": plan_id})
+    assert updated is not None
+    assert updated["jobs"][0]["has_engineering_complex"] is False
+
+
+@respx.mock
+async def test_set_job_structure_404s_for_unknown_job(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+
+    response = client.get(
+        f"/plans/{plan_id}/jobs/nonexistent/structure",
+        params={"has_engineering_complex": "true", "rig_tier": "t1", "security_band": "high"},
+    )
+
+    assert response.status_code == 404
+
+
+@respx.mock
+async def test_plan_detail_reduces_materials_for_a_job_built_in_a_rigged_structure(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    job_id = doc["jobs"][0]["job_id"]
+    client.get(
+        f"/plans/{plan_id}/jobs/{job_id}/structure",
+        params={"has_engineering_complex": "true", "rig_tier": "t2", "security_band": "null_wh"},
+    )
+
+    response = client.get(f"/plans/{plan_id}")
+
+    assert response.status_code == 200
+    # 100 Tritanium/run * (1 - 0.059896) = 94.0104 -> ceil -> 95.
+    assert "<td>95</td>" in response.text
+    assert "checked" in response.text
+
+
+@respx.mock
 async def test_set_job_build_flag_requires_login(client: TestClient) -> None:
     response = client.get(
         "/plans/some-plan/jobs/some-job/build-set", params={"type_id": 1, "build": "true"}

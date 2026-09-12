@@ -10,11 +10,51 @@ from app.services import market_prices, sde
 
 _MAX_DEPTH = 15
 
+# Upwell Engineering Complexes (Raitaru/Azbel/Sotiyo) give a flat 1% material discount over
+# an NPC station or plain Citadel, regardless of size - confirmed via
+# https://forums.eveonline.com/t/material-efficiency-production-formula/275553/4 and
+# https://wiki.eveuniversity.org/Manufacturing.
+FACILITY_MATERIAL_BONUS = 0.01
 
-def material_quantity_per_run(base_quantity: int, material_efficiency: int) -> int:
-    """Applies a blueprint's material efficiency (0-10, a percentage) to one material's base
-    per-run quantity - EVE always rounds the reduced amount up, and never below 1."""
-    return max(1, math.ceil(base_quantity * (1 - material_efficiency / 100)))
+# A fitted manufacturing rig adds a further material discount on top of the facility bonus -
+# same rate (2%/2.4%) for every manufacturing category (ship, component, etc.), so which
+# specific rig is fitted doesn't matter, only its tech level. Values confirmed against
+# EVE Ref item pages for Standup M-Set Basic Small Ship Manufacturing Material Efficiency
+# I/II (https://everef.net/types/37154, https://everef.net/types/37155).
+RIG_BASE_MATERIAL_BONUS = {"t1": 0.02, "t2": 0.024}
+
+# The rig bonus (not the flat facility bonus) is scaled up by the system's security status -
+# confirmed via https://forums.eveonline.com/t/material-efficiency-production-formula/275553/4.
+SECURITY_RIG_MULTIPLIER = {"high": 1.0, "low": 1.9, "null_wh": 2.1}
+
+
+def structure_material_bonus(
+    has_engineering_complex: bool, rig_tier: str | None, security_band: str
+) -> float:
+    """Combined material discount (as a fraction, e.g. 0.0599 for 5.99%) from building in an
+    Engineering Complex, optionally with a fitted rig - stacks multiplicatively with the
+    facility's own flat bonus, same as it would with blueprint ME (see
+    material_quantity_per_run). 0 if not building in a rigged/Engineering Complex structure
+    at all."""
+    if not has_engineering_complex:
+        return 0.0
+    multiplier = 1.0 - FACILITY_MATERIAL_BONUS
+    if rig_tier:
+        rig_bonus = RIG_BASE_MATERIAL_BONUS[rig_tier] * SECURITY_RIG_MULTIPLIER[security_band]
+        multiplier *= 1.0 - rig_bonus
+    return 1.0 - multiplier
+
+
+def material_quantity_per_run(
+    base_quantity: int, material_efficiency: int, structure_bonus: float = 0.0
+) -> int:
+    """Applies a blueprint's material efficiency (0-10, a percentage) and, optionally, a
+    structure material_bonus (a fraction from structure_material_bonus, stacking
+    multiplicatively - EVE applies every reduction before rounding once, not once per
+    reduction) to one material's base per-run quantity. EVE always rounds the reduced amount
+    up, and never below 1."""
+    reduced = base_quantity * (1 - material_efficiency / 100) * (1 - structure_bonus)
+    return max(1, math.ceil(reduced))
 
 
 @dataclass
@@ -89,6 +129,7 @@ async def resolve_build_chain(
     build_set: frozenset[int] = frozenset(),
     material_efficiency: int = 0,
     time_efficiency: int = 0,
+    structure_bonus: float = 0.0,
 ) -> BuildResolution:
     """Walks the build chain for a target item: finds the recipe that produces it - a
     manufacturing blueprint/reaction formula, or (for planetary commodities) a planetary
@@ -101,8 +142,10 @@ async def resolve_build_chain(
     tell which leaves could be toggled to "build" versus which can only be bought.
 
     material_efficiency/time_efficiency come from one specific owned blueprint (0 if the job
-    isn't linked to one) and only apply to the target's own recipe - deeper sub-components are
-    each their own blueprint with their own (unknown, so assumed 0%) efficiency."""
+    isn't linked to one), and structure_bonus from the structure the job is set to build in
+    (see structure_material_bonus) - all only apply to the target's own recipe, since deeper
+    sub-components are each their own blueprint/build location with their own (unknown, so
+    assumed 0%) efficiency."""
     steps_by_type_id: dict[int, BuildStep] = {}
     raw_totals: dict[int, int] = {}
     raw_buildable: dict[int, bool] = {}
@@ -127,12 +170,12 @@ async def resolve_build_chain(
 
             product_quantity = recipe.output_quantity
             materials = recipe.materials
-            if type_id == target_type_id and material_efficiency:
+            if type_id == target_type_id and (material_efficiency or structure_bonus):
                 materials = [
                     {
                         "type_id": material["type_id"],
                         "quantity": material_quantity_per_run(
-                            material["quantity"], material_efficiency
+                            material["quantity"], material_efficiency, structure_bonus
                         ),
                     }
                     for material in materials

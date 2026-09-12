@@ -161,6 +161,24 @@
             <div class="item-line"><span>Build time</span>
               <span class="item-value">{{ job.build_time }}</span></div>
             {% endif %}
+            <form method="get" action="/plans/{{ plan_id }}/jobs/{{ job.job_id }}/structure" class="structure-form">
+              <label>
+                <input type="checkbox" name="has_engineering_complex" value="true"
+                  {{ "checked" if job.structure.has_engineering_complex else "" }}
+                  onchange="this.form.submit()">
+                Engineering Complex
+              </label>
+              <select name="rig_tier" onchange="this.form.submit()">
+                <option value="" {{ "selected" if not job.structure.rig_tier else "" }}>No rig</option>
+                <option value="t1" {{ "selected" if job.structure.rig_tier == "t1" else "" }}>T1 rig</option>
+                <option value="t2" {{ "selected" if job.structure.rig_tier == "t2" else "" }}>T2 rig</option>
+              </select>
+              <select name="security_band" onchange="this.form.submit()">
+                <option value="high" {{ "selected" if job.structure.security_band == "high" else "" }}>Highsec</option>
+                <option value="low" {{ "selected" if job.structure.security_band == "low" else "" }}>Lowsec</option>
+                <option value="null_wh" {{ "selected" if job.structure.security_band == "null_wh" else "" }}>Null/WH</option>
+              </select>
+            </form>
           </div>
           <div class="job-panel-tables">
             {% if job.steps %}

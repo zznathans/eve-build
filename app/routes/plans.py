@@ -435,6 +435,41 @@ async def update_job_quantity(
     return RedirectResponse(f"/plans/{safe_plan_id}")
 
 
+_RIG_TIERS = frozenset({"t1", "t2"})
+_SECURITY_BANDS = frozenset({"high", "low", "null_wh"})
+
+
+@router.get("/{plan_id}/jobs/{job_id}/structure")
+async def set_job_structure(
+    plan_id: str,
+    job_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    has_engineering_complex: bool = Query(default=False),
+    rig_tier: str = Query(default=""),
+    security_band: str = Query(default="high"),
+) -> RedirectResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    if not _PLAN_ID_RE.fullmatch(job_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid job id")
+    if security_band not in _SECURITY_BANDS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid security band")
+    normalized_rig_tier = rig_tier if rig_tier in _RIG_TIERS else None
+    updated = await plan.update_job_structure(
+        db,
+        plan_id,
+        character.character_id,
+        job_id,
+        has_engineering_complex,
+        normalized_rig_tier,
+        security_band,
+    )
+    if not updated:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan or job not found")
+    return RedirectResponse(f"/plans/{plan_id}")
+
+
 @router.get("/{plan_id}/jobs/{job_id}/build-set")
 async def set_job_build_flag(
     plan_id: str,
@@ -569,6 +604,11 @@ async def plan_detail(
     resolutions = []
     for job in jobs:
         blueprint = blueprint_by_item_id.get(cast(int, job.get("blueprint_item_id") or 0))
+        structure_bonus = build_chain.structure_material_bonus(
+            bool(job.get("has_engineering_complex")),
+            cast(str | None, job.get("rig_tier")),
+            cast(str, job.get("security_band") or "high"),
+        )
         resolutions.append(
             await build_chain.resolve_build_chain(
                 db,
@@ -579,6 +619,7 @@ async def plan_detail(
                 frozenset(cast(list[int], job["build_set"])),
                 material_efficiency=blueprint.material_efficiency if blueprint else 0,
                 time_efficiency=blueprint.time_efficiency if blueprint else 0,
+                structure_bonus=structure_bonus,
             )
         )
 
@@ -635,6 +676,11 @@ async def plan_detail(
                     if blueprint_item_id
                     else None
                 ),
+                "structure": {
+                    "has_engineering_complex": bool(job.get("has_engineering_complex")),
+                    "rig_tier": job.get("rig_tier") or "",
+                    "security_band": job.get("security_band") or "high",
+                },
             }
         )
 
