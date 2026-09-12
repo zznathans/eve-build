@@ -28,6 +28,7 @@ def resolve_container_chain(location_id: int, assets_by_item_id: dict[int, esi.A
 class LocationInfo:
     name: str | None
     security_status: float | None
+    type_id: int | None = None
 
 
 async def _resolve_location_system_ids(
@@ -36,13 +37,13 @@ async def _resolve_location_system_ids(
     settings: Settings,
     access_token: str,
     location_ids: set[int],
-) -> dict[int, tuple[str | None, int | None]]:
+) -> dict[int, tuple[str | None, int | None, int | None]]:
     cache_keys = {
         location_id: sde.cache_key("location_details", location_id) for location_id in location_ids
     }
     cached = await cache.get_many_cached(redis, list(cache_keys.values()))
-    resolved: dict[int, tuple[str | None, int | None]] = {
-        location_id: (cached[key]["name"], cached[key]["system_id"])
+    resolved: dict[int, tuple[str | None, int | None, int | None]] = {
+        location_id: (cached[key]["name"], cached[key]["system_id"], cached[key].get("type_id"))
         for location_id, key in cache_keys.items()
         if key in cached
     }
@@ -52,20 +53,23 @@ async def _resolve_location_system_ids(
         mongo_docs = await db.location_names.find(
             {"_id": {"$in": list(remaining)}, "name": {"$ne": None}}
         ).to_list(None)
-        newly_resolved = {doc["_id"]: (doc["name"], doc.get("system_id")) for doc in mongo_docs}
+        newly_resolved = {
+            doc["_id"]: (doc["name"], doc.get("system_id"), doc.get("type_id"))
+            for doc in mongo_docs
+        }
         resolved.update(newly_resolved)
         await cache.set_many_cached(
             redis,
             {
-                cache_keys[loc_id]: {"name": name, "system_id": system_id}
-                for loc_id, (name, system_id) in newly_resolved.items()
+                cache_keys[loc_id]: {"name": name, "system_id": system_id, "type_id": type_id}
+                for loc_id, (name, system_id, type_id) in newly_resolved.items()
             },
             settings.redis_cache_ttl_seconds,
         )
 
     for location_id in location_ids - resolved.keys():
         details = await esi.get_location_details(settings, access_token, location_id)
-        resolved[location_id] = (details.name, details.system_id)
+        resolved[location_id] = (details.name, details.system_id, details.type_id)
         # Only persist successful resolutions - a failed lookup (e.g. missing scope or no
         # docking access) should be retried next time rather than cached as a permanent None.
         if details.name is not None:
@@ -75,6 +79,7 @@ async def _resolve_location_system_ids(
                     "$set": {
                         "name": details.name,
                         "system_id": details.system_id,
+                        "type_id": details.type_id,
                         "cached_at": datetime.now(UTC).replace(tzinfo=None),
                     }
                 },
@@ -82,7 +87,13 @@ async def _resolve_location_system_ids(
             )
             await cache.set_many_cached(
                 redis,
-                {cache_keys[location_id]: {"name": details.name, "system_id": details.system_id}},
+                {
+                    cache_keys[location_id]: {
+                        "name": details.name,
+                        "system_id": details.system_id,
+                        "type_id": details.type_id,
+                    }
+                },
                 settings.redis_cache_ttl_seconds,
             )
 
@@ -221,7 +232,9 @@ async def resolve_location_info(
         db, redis, settings, access_token, location_ids
     )
     system_ids = {
-        system_id for _, system_id in name_and_system_by_location.values() if system_id is not None
+        system_id
+        for _, system_id, _ in name_and_system_by_location.values()
+        if system_id is not None
     }
     security_by_system = await _resolve_system_security_statuses(db, redis, settings, system_ids)
 
@@ -229,6 +242,7 @@ async def resolve_location_info(
         location_id: LocationInfo(
             name=name,
             security_status=security_by_system.get(system_id) if system_id is not None else None,
+            type_id=type_id,
         )
-        for location_id, (name, system_id) in name_and_system_by_location.items()
+        for location_id, (name, system_id, type_id) in name_and_system_by_location.items()
     }

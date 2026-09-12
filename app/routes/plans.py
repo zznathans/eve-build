@@ -14,8 +14,9 @@ from app.db.mongo import get_database
 from app.db.redis import get_redis
 from app.deps import get_current_character
 from app.models.character import CharacterDocument
-from app.services import build_chain, character_data, plan, sde
+from app.services import build_chain, character_data, locations, plan, sde
 from app.services.esi import BlueprintEntry
+from app.services.locations import resolve_container_chain
 from app.templating import templates
 from app.web import format_duration, format_isk, format_number, gauge_cell_html, item_icon_url
 
@@ -467,6 +468,68 @@ async def set_job_structure(
     )
     if not updated:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan or job not found")
+    return RedirectResponse(f"/plans/{plan_id}")
+
+
+@router.get("/{plan_id}/jobs/{job_id}/structure/detect")
+async def detect_job_structure(
+    plan_id: str,
+    job_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    redis: Redis | None = Depends(get_redis),
+    settings: Settings = Depends(get_settings),
+) -> RedirectResponse:
+    """Best-effort: resolves the structure a job's linked blueprint currently sits in and
+    fills in Engineering Complex + security band from it (rig tier can't be auto-detected -
+    see the eve-build session notes on GetIndustryFacilities/corp-structure scopes). Silently
+    leaves the job's structure settings unchanged if the blueprint isn't linked, isn't found,
+    or the location can't be resolved (e.g. no docking rights on that structure) - this is an
+    optional shortcut, not a required step, so it fails quietly rather than erroring out."""
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    if not _PLAN_ID_RE.fullmatch(job_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid job id")
+    doc = await plan.get_plan(db, plan_id, character.character_id)
+    if doc is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+
+    jobs = cast(list[dict[str, object]], doc["jobs"])
+    job = next((j for j in jobs if j["job_id"] == job_id), None)
+    if job is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Job not found")
+
+    blueprint_item_id = job.get("blueprint_item_id")
+    if blueprint_item_id:
+        owned_blueprints, _ = await character_data.get_merged_blueprints(
+            db, redis, settings, character
+        )
+        blueprint = next((bp for bp in owned_blueprints if bp.item_id == blueprint_item_id), None)
+        if blueprint is not None:
+            assets, _ = await character_data.get_merged_assets(db, redis, settings, character)
+            assets_by_item_id = {asset.item_id: asset for asset in assets}
+            resolved_location_id = resolve_container_chain(blueprint.location_id, assets_by_item_id)
+            location_info = await locations.resolve_location_info(
+                db, redis, settings, character.access_token, {resolved_location_id}
+            )
+            info = location_info.get(resolved_location_id)
+            if info is not None and info.type_id is not None:
+                type_docs = await sde.type_docs(db, redis, settings, {info.type_id})
+                group_id = type_docs.get(info.type_id, {}).get("group_id")
+                has_engineering_complex = group_id == build_chain.ENGINEERING_COMPLEX_GROUP_ID
+                security_band = build_chain.security_band_for_status(
+                    info.security_status if info.security_status is not None else 1.0
+                )
+                await plan.update_job_structure(
+                    db,
+                    plan_id,
+                    character.character_id,
+                    job_id,
+                    has_engineering_complex,
+                    cast(str | None, job.get("rig_tier")),
+                    security_band,
+                )
+
     return RedirectResponse(f"/plans/{plan_id}")
 
 

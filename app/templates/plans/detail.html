@@ -199,6 +199,11 @@
                 <option value="low" {{ "selected" if job.structure.security_band == "low" else "" }}>Lowsec</option>
                 <option value="null_wh" {{ "selected" if job.structure.security_band == "null_wh" else "" }}>Null/WH</option>
               </select>
+              {% if job.blueprint_link %}
+              <a class="btn btn-secondary" href="/plans/{{ plan_id }}/jobs/{{ job.job_id }}/structure/detect">
+                Detect from blueprint
+              </a>
+              {% endif %}
             </form>
           </div>
           <div class="job-panel-tables">

@@ -7,6 +7,7 @@ from app.services.build_chain import (
     aggregate_raw_materials,
     material_quantity_per_run,
     resolve_build_chain,
+    security_band_for_status,
     structure_material_bonus,
 )
 
@@ -628,3 +629,12 @@ async def test_resolve_build_chain_applies_structure_bonus_to_the_targets_own_re
 
     # 100 * (1 - 0.059896) = 94.0104 -> ceil -> 95.
     assert resolution.raw_materials[0].quantity == 95
+
+
+def test_security_band_for_status_buckets_correctly() -> None:
+    assert security_band_for_status(1.0) == "high"
+    assert security_band_for_status(0.5) == "high"
+    assert security_band_for_status(0.45) == "low"
+    assert security_band_for_status(0.1) == "low"
+    assert security_band_for_status(0.0) == "null_wh"
+    assert security_band_for_status(-1.0) == "null_wh"

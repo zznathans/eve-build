@@ -10,6 +10,11 @@ from app.services import market_prices, sde
 
 _MAX_DEPTH = 15
 
+# SDE group_id shared by all three Engineering Complex sizes (Raitaru/Azbel/Sotiyo) -
+# confirmed via https://esi.evetech.net/latest/universe/groups/1404/. Used to auto-detect
+# "is this structure an Engineering Complex" from a resolved location's type_id.
+ENGINEERING_COMPLEX_GROUP_ID = 1404
+
 # Upwell Engineering Complexes (Raitaru/Azbel/Sotiyo) give a flat 1% material discount over
 # an NPC station or plain Citadel, regardless of size - confirmed via
 # https://forums.eveonline.com/t/material-efficiency-production-formula/275553/4 and
@@ -43,6 +48,17 @@ def structure_material_bonus(
         rig_bonus = RIG_BASE_MATERIAL_BONUS[rig_tier] * SECURITY_RIG_MULTIPLIER[security_band]
         multiplier *= 1.0 - rig_bonus
     return 1.0 - multiplier
+
+
+def security_band_for_status(security_status: float) -> str:
+    """Buckets a solar system's security_status into the same three bands
+    structure_material_bonus takes - highsec >= 0.5, lowsec down to (but not including) 0.0,
+    null-sec/wormhole at or below 0.0 (wormhole systems report a non-positive status)."""
+    if security_status >= 0.5:
+        return "high"
+    if security_status > 0.0:
+        return "low"
+    return "null_wh"
 
 
 def material_quantity_per_run(

@@ -791,6 +791,121 @@ async def test_plan_detail_shows_plan_wide_structure_form(
 
 
 @respx.mock
+async def test_detect_job_structure_requires_login(client: TestClient) -> None:
+    response = client.get("/plans/some-plan/jobs/some-job/structure/detect")
+
+    assert response.status_code == 401
+
+
+@respx.mock
+async def test_detect_job_structure_fills_in_engineering_complex_and_security_band(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    ec_type_id = 35825  # Raitaru - group_id 1404 (Engineering Complex)
+    structure_id = 1000000000123  # above ESI's station-id ceiling
+    system_id = 30000142
+
+    _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
+    await _seed_buildable_ship(mongo_db)
+    await mongo_db.sde_types.insert_many(
+        [
+            {"_id": SHIP_BLUEPRINT_TYPE_ID, "name": "Test Ship Blueprint", "published": True},
+            {"_id": ec_type_id, "name": "Raitaru", "group_id": 1404, "published": True},
+        ]
+    )
+    _mock_blueprints(
+        test_settings,
+        [{**_blueprint_entry(1001, SHIP_BLUEPRINT_TYPE_ID), "location_id": structure_id}],
+    )
+    respx.get(f"{test_settings.esi_base_url}/universe/structures/{structure_id}").mock(
+        return_value=Response(
+            200, json={"name": "Test Raitaru", "system_id": system_id, "type_id": ec_type_id}
+        )
+    )
+    respx.get(f"{test_settings.esi_base_url}/universe/systems/{system_id}").mock(
+        return_value=Response(200, json={"security_status": -0.5})
+    )
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    client.get(
+        f"/plans/{plan_id}/add-from-blueprints/add",
+        params={"item_id": 1001},
+        follow_redirects=False,
+    )
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    job_id = doc["jobs"][1]["job_id"]
+
+    response = client.get(
+        f"/plans/{plan_id}/jobs/{job_id}/structure/detect", follow_redirects=False
+    )
+
+    assert response.status_code in (302, 303, 307)
+    assert response.headers["location"] == f"/plans/{plan_id}"
+    updated = await mongo_db.plans.find_one({"_id": plan_id})
+    assert updated is not None
+    updated_job = updated["jobs"][1]
+    assert updated_job["has_engineering_complex"] is True
+    assert updated_job["security_band"] == "null_wh"
+    assert updated_job["rig_tier"] is None  # detection never sets a rig - stays manual
+
+
+@respx.mock
+async def test_detect_job_structure_is_a_no_op_when_job_has_no_blueprint(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    job_id = doc["jobs"][0]["job_id"]
+
+    response = client.get(
+        f"/plans/{plan_id}/jobs/{job_id}/structure/detect", follow_redirects=False
+    )
+
+    assert response.status_code in (302, 303, 307)
+    unchanged = await mongo_db.plans.find_one({"_id": plan_id})
+    assert unchanged is not None
+    assert unchanged["jobs"][0]["has_engineering_complex"] is False
+
+
+@respx.mock
+async def test_detect_job_structure_404s_for_unknown_job(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+
+    response = client.get(f"/plans/{plan_id}/jobs/nonexistent/structure/detect")
+
+    assert response.status_code == 404
+
+
+@respx.mock
 async def test_plan_detail_reduces_materials_for_a_job_built_in_a_rigged_structure(
     client: TestClient,
     test_settings: Settings,
