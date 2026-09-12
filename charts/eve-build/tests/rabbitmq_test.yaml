@@ -1,0 +1,83 @@
+suite: rabbitmq
+templates:
+  - rabbitmq.yaml
+tests:
+  - it: renders nothing when disabled (the default)
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders nothing when enabled but deploy is false (the default)
+    set:
+      rabbitmq.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders nothing when deploy is true but enabled is false
+    set:
+      rabbitmq.deploy: true
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders a RabbitmqCluster CR when enabled and deploy are both true
+    set:
+      rabbitmq.enabled: true
+      rabbitmq.deploy: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isAPIVersion:
+          of: rabbitmq.com/v1beta1
+      - isKind:
+          of: RabbitmqCluster
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-rabbitmq
+
+  - it: uses the configured replica count
+    set:
+      rabbitmq.enabled: true
+      rabbitmq.deploy: true
+      rabbitmq.replicas: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+
+  - it: requests storage per node via persistence config
+    set:
+      rabbitmq.enabled: true
+      rabbitmq.deploy: true
+      rabbitmq.storage: 20Gi
+      rabbitmq.storageClassName: some-storage-class
+    asserts:
+      - equal:
+          path: spec.persistence.storage
+          value: 20Gi
+      - equal:
+          path: spec.persistence.storageClassName
+          value: some-storage-class
+
+  - it: applies configured resources
+    set:
+      rabbitmq.enabled: true
+      rabbitmq.deploy: true
+      rabbitmq.resources.requests.memory: 256Mi
+    asserts:
+      - equal:
+          path: spec.resources.requests.memory
+          value: 256Mi
+
+  - it: enables the prometheus plugin and scrape annotation
+    set:
+      rabbitmq.enabled: true
+      rabbitmq.deploy: true
+    asserts:
+      - equal:
+          path: spec.rabbitmq.additionalPlugins[0]
+          value: rabbitmq_prometheus
+      - equal:
+          path: spec.override.statefulSet.spec.template.metadata.annotations["prometheus.io/scrape"]
+          value: "true"

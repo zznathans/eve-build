@@ -7,6 +7,7 @@ templates:
   - service-account.yaml
   - redis.yaml
   - mongodb.yaml
+  - rabbitmq.yaml
   - market-prices-dispatch-cronjob.yaml
   - market-prices-fetch-worker.yaml
   - market-prices-write-worker.yaml
@@ -20,6 +21,7 @@ set:
   eveBuild.marketPrices.refreshApiKey: my-api-key
   eveBuild.session.secretKey: my-session-key
   rabbitmq.enabled: true
+  rabbitmq.deploy: true
   mongodb.enabled: true
   redis.enabled: true
   keda.enabled: true
@@ -39,7 +41,7 @@ tests:
           value: "-2"
         template: service-account.yaml
 
-  - it: syncs datastores and KEDA's TriggerAuthentication before the app (wave -1)
+  - it: syncs datastores, RabbitMQ, and KEDA's TriggerAuthentication before the app (wave -1)
     asserts:
       - equal:
           path: metadata.annotations["argocd.argoproj.io/sync-wave"]
@@ -54,6 +56,10 @@ tests:
           path: metadata.annotations["argocd.argoproj.io/sync-wave"]
           value: "-1"
         template: market-prices-keda-triggerauth.yaml
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "-1"
+        template: rabbitmq.yaml
 
   - it: syncs the app Deployment and Service after datastores (wave 0)
     asserts:
