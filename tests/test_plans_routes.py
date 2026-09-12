@@ -707,6 +707,90 @@ async def test_set_job_structure_404s_for_unknown_job(
 
 
 @respx.mock
+async def test_set_plan_structure_requires_login(client: TestClient) -> None:
+    response = client.get(
+        "/plans/some-plan/structure",
+        params={"has_engineering_complex": "true", "rig_tier": "t1", "security_band": "high"},
+    )
+
+    assert response.status_code == 401
+
+
+@respx.mock
+async def test_set_plan_structure_updates_every_job_and_redirects_back(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
+    await _seed_buildable_ship(mongo_db)
+    await _seed_buildable_module(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    client.get(f"/plans/{plan_id}/add-job", params={"type_id": MODULE_TYPE_ID, "qty": 1})
+
+    response = client.get(
+        f"/plans/{plan_id}/structure",
+        params={"has_engineering_complex": "true", "rig_tier": "t2", "security_band": "null_wh"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code in (302, 303, 307)
+    assert response.headers["location"] == f"/plans/{plan_id}"
+    doc = await mongo_db.plans.find_one({"_id": plan_id})
+    assert doc is not None
+    assert len(doc["jobs"]) == 2
+    for job in doc["jobs"]:
+        assert job["has_engineering_complex"] is True
+        assert job["rig_tier"] == "t2"
+        assert job["security_band"] == "null_wh"
+
+
+@respx.mock
+async def test_set_plan_structure_404s_for_unknown_plan(
+    client: TestClient,
+    test_settings: Settings,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+
+    response = client.get(
+        "/plans/nonexistent/structure",
+        params={"has_engineering_complex": "true", "rig_tier": "t1", "security_band": "high"},
+    )
+
+    assert response.status_code == 404
+
+
+@respx.mock
+async def test_plan_detail_shows_plan_wide_structure_form(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+
+    response = client.get(f"/plans/{plan_id}")
+
+    assert response.status_code == 200
+    assert f'action="/plans/{plan_id}/structure"' in response.text
+    assert "Apply to all jobs" in response.text
+
+
+@respx.mock
 async def test_plan_detail_reduces_materials_for_a_job_built_in_a_rigged_structure(
     client: TestClient,
     test_settings: Settings,

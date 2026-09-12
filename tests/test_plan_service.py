@@ -12,6 +12,7 @@ from app.services.plan import (
     remove_job,
     rename_plan,
     set_build_flag_for_all_jobs,
+    set_structure_for_all_jobs,
     update_job_build_flag,
     update_job_quantity,
     update_job_structure,
@@ -266,6 +267,48 @@ async def test_update_job_structure_returns_false_for_a_different_owner(
 
     result = await update_job_structure(
         mongo_db, plan_id, OTHER_CHARACTER_ID, job_id, True, "t1", "high"
+    )
+
+    assert result is False
+    unchanged = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert unchanged is not None
+    assert unchanged["jobs"][0]["has_engineering_complex"] is False
+
+
+async def test_set_structure_for_all_jobs_updates_every_job(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+    await add_job(mongo_db, plan_id, CHARACTER_ID, MODULE_TYPE_ID, 2, frozenset())
+
+    result = await set_structure_for_all_jobs(mongo_db, plan_id, CHARACTER_ID, True, "t2", "low")
+
+    assert result is True
+    doc = await get_plan(mongo_db, plan_id, CHARACTER_ID)
+    assert doc is not None
+    for job in doc["jobs"]:
+        assert job["has_engineering_complex"] is True
+        assert job["rig_tier"] == "t2"
+        assert job["security_band"] == "low"
+
+
+async def test_set_structure_for_all_jobs_returns_false_for_unknown_plan(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    result = await set_structure_for_all_jobs(
+        mongo_db, "nonexistent", CHARACTER_ID, True, "t1", "high"
+    )
+
+    assert result is False
+
+
+async def test_set_structure_for_all_jobs_returns_false_for_a_different_owner(
+    mongo_db: AsyncMongoMockClient,
+) -> None:
+    plan_id = await create_plan(mongo_db, CHARACTER_ID, SHIP_TYPE_ID, 1, frozenset())
+
+    result = await set_structure_for_all_jobs(
+        mongo_db, plan_id, OTHER_CHARACTER_ID, True, "t1", "high"
     )
 
     assert result is False

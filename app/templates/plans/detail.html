@@ -93,6 +93,27 @@
   </div>
   <a class="btn btn-primary plan-header-action" href="/plans/{{ plan_id }}/add-from-blueprints">Add from Blueprints</a>
 
+  {% if jobs %}
+  <form method="get" action="/plans/{{ plan_id }}/structure" class="structure-form plan-structure-form">
+    <span>Set structure for all jobs:</span>
+    <label>
+      <input type="checkbox" name="has_engineering_complex" value="true" onchange="this.form.submit()">
+      Engineering Complex
+    </label>
+    <select name="rig_tier" onchange="this.form.submit()">
+      <option value="">No rig</option>
+      <option value="t1">T1 rig</option>
+      <option value="t2">T2 rig</option>
+    </select>
+    <select name="security_band" onchange="this.form.submit()">
+      <option value="high">Highsec</option>
+      <option value="low">Lowsec</option>
+      <option value="null_wh">Null/WH</option>
+    </select>
+    <button type="submit" class="btn btn-secondary">Apply to all jobs</button>
+  </form>
+  {% endif %}
+
   <div class="summary">
     {{ summary_stat(stats.total_cost, "Total raw material cost") }}
     {{ summary_stat(stats.total_value, "Total output value") }}

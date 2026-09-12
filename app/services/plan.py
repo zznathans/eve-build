@@ -174,6 +174,34 @@ async def update_job_structure(
     return result.matched_count > 0
 
 
+async def set_structure_for_all_jobs(
+    db: AsyncIOMotorDatabase,
+    plan_id: str,
+    character_id: int,
+    has_engineering_complex: bool,
+    rig_tier: str | None,
+    security_band: str,
+) -> bool:
+    """Sets which structure every job in the plan is planned to be built in at once - lets
+    the user apply one structure setup to the whole plan instead of each job individually.
+    Returns False if the plan doesn't exist or isn't owned by this character (the route turns
+    that into a 404)."""
+    doc = await db.plans.find_one({"_id": plan_id, "character_id": character_id})
+    if doc is None:
+        return False
+    jobs = cast(list[dict[str, object]], doc["jobs"])
+    for job in jobs:
+        job["has_engineering_complex"] = has_engineering_complex
+        job["rig_tier"] = rig_tier
+        job["security_band"] = security_band
+    now = datetime.now(UTC).replace(tzinfo=None)
+    await db.plans.update_one(
+        {"_id": plan_id, "character_id": character_id},
+        {"$set": {"jobs": jobs, "updated_at": now}},
+    )
+    return True
+
+
 async def set_build_flag_for_all_jobs(
     db: AsyncIOMotorDatabase, plan_id: str, character_id: int, type_id: int, build: bool
 ) -> bool:

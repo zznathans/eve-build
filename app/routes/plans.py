@@ -470,6 +470,33 @@ async def set_job_structure(
     return RedirectResponse(f"/plans/{plan_id}")
 
 
+@router.get("/{plan_id}/structure")
+async def set_plan_structure(
+    plan_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    has_engineering_complex: bool = Query(default=False),
+    rig_tier: str = Query(default=""),
+    security_band: str = Query(default="high"),
+) -> RedirectResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    if security_band not in _SECURITY_BANDS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid security band")
+    normalized_rig_tier = rig_tier if rig_tier in _RIG_TIERS else None
+    updated = await plan.set_structure_for_all_jobs(
+        db,
+        plan_id,
+        character.character_id,
+        has_engineering_complex,
+        normalized_rig_tier,
+        security_band,
+    )
+    if not updated:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+    return RedirectResponse(f"/plans/{plan_id}")
+
+
 @router.get("/{plan_id}/jobs/{job_id}/build-set")
 async def set_job_build_flag(
     plan_id: str,
