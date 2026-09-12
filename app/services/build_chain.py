@@ -260,3 +260,28 @@ def aggregate_raw_materials(resolutions: list[BuildResolution]) -> list[RawMater
                 existing.quantity += material.quantity
 
     return sorted(merged.values(), key=lambda material: material.name)
+
+
+def aggregate_build_steps(resolutions: list[BuildResolution]) -> list[BuildStep]:
+    """Merges build steps across multiple resolutions (e.g. every job in a plan) into one
+    combined list, summing runs/quantity_needed for a component two jobs both build. name
+    only depends on type_id, so the first occurrence's value is reused rather than
+    re-fetched."""
+    merged: dict[int, BuildStep] = {}
+    for resolution in resolutions:
+        for step in resolution.steps:
+            existing = merged.get(step.type_id)
+            if existing is None:
+                merged[step.type_id] = BuildStep(
+                    type_id=step.type_id,
+                    name=step.name,
+                    quantity_needed=step.quantity_needed,
+                    runs=step.runs,
+                    product_quantity=step.product_quantity,
+                    materials=dict(step.materials),
+                )
+            else:
+                existing.quantity_needed += step.quantity_needed
+                existing.runs += step.runs
+
+    return sorted(merged.values(), key=lambda step: step.name)

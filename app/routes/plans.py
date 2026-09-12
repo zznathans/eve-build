@@ -95,6 +95,29 @@ def _material_view(
     }
 
 
+def _step_view(
+    step: build_chain.BuildStep,
+    *,
+    plan_id: str,
+    resolutions: list[build_chain.BuildResolution],
+    target_type_ids: frozenset[int],
+) -> dict[str, object]:
+    """A row for the combined Build Steps table - the Buy toggle is omitted for a type_id
+    that's some job's own target, since resolve_build_chain always expands the target
+    regardless of build_set (toggling it to "buy" would silently do nothing)."""
+    flag_html = ""
+    if step.type_id not in target_type_ids:
+        status = _material_bulk_status(step.type_id, resolutions)
+        flag_html = _bulk_material_flag_html(step.type_id, status, plan_id, True)
+    return {
+        "icon_url": item_icon_url(step.type_id),
+        "name": step.name,
+        "runs": step.runs,
+        "quantity_needed": step.quantity_needed,
+        "flag_html": flag_html,
+    }
+
+
 def _job_flag_context(
     resolution: build_chain.BuildResolution,
     *,
@@ -569,6 +592,8 @@ async def plan_detail(
     }
 
     combined_materials = build_chain.aggregate_raw_materials(resolutions)
+    combined_steps = build_chain.aggregate_build_steps(resolutions)
+    target_type_ids = frozenset(resolution.target_type_id for resolution in resolutions)
 
     all_material_type_ids = {
         material.type_id for resolution in resolutions for material in resolution.raw_materials
@@ -627,6 +652,11 @@ async def plan_detail(
         else:
             combined_materials_view.append(view)
 
+    combined_steps_view = [
+        _step_view(step, plan_id=plan_id, resolutions=resolutions, target_type_ids=target_type_ids)
+        for step in combined_steps
+    ]
+
     return templates.TemplateResponse(
         request,
         "plans/detail.html",
@@ -638,6 +668,7 @@ async def plan_detail(
             "created_at": _format_timestamp(cast(datetime, doc["created_at"])),
             "stats": stats,
             "jobs": jobs_view,
+            "combined_steps": combined_steps_view,
             "combined_materials": combined_materials_view,
             "combined_pi_materials": combined_pi_materials_view,
         },

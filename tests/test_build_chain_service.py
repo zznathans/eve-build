@@ -2,6 +2,7 @@ from mongomock_motor import AsyncMongoMockClient
 
 from app.core.config import Settings
 from app.services.build_chain import (
+    aggregate_build_steps,
     aggregate_raw_materials,
     material_quantity_per_run,
     resolve_build_chain,
@@ -516,3 +517,59 @@ async def test_resolve_build_chain_build_time_is_none_when_not_buildable(
     resolution = await resolve_build_chain(mongo_db, None, test_settings, TRITANIUM_TYPE_ID, 1)
 
     assert resolution.build_time_seconds is None
+
+
+async def test_aggregate_build_steps_sums_runs_for_a_shared_component_across_resolutions(
+    mongo_db: AsyncMongoMockClient, test_settings: Settings
+) -> None:
+    await _seed_names(
+        mongo_db,
+        [
+            {"_id": SHIP_TYPE_ID, "name": "Test Ship", "published": True},
+            {"_id": MODULE_TYPE_ID, "name": "Test Module", "published": True},
+            {"_id": COMPONENT_TYPE_ID, "name": "Shared Component", "published": True},
+            {"_id": TRITANIUM_TYPE_ID, "name": "Tritanium", "published": True},
+        ],
+    )
+    await mongo_db.sde_blueprints.insert_many(
+        [
+            {
+                "_id": SHIP_BLUEPRINT_TYPE_ID,
+                "product_type_id": SHIP_TYPE_ID,
+                "product_quantity": 1,
+                "materials": [{"type_id": COMPONENT_TYPE_ID, "quantity": 1}],
+                "activity_id": 1,
+            },
+            {
+                "_id": MODULE_BLUEPRINT_TYPE_ID,
+                "product_type_id": MODULE_TYPE_ID,
+                "product_quantity": 1,
+                "materials": [{"type_id": COMPONENT_TYPE_ID, "quantity": 2}],
+                "activity_id": 1,
+            },
+            {
+                "_id": COMPONENT_BLUEPRINT_TYPE_ID,
+                "product_type_id": COMPONENT_TYPE_ID,
+                "product_quantity": 1,
+                "materials": [{"type_id": TRITANIUM_TYPE_ID, "quantity": 10}],
+                "activity_id": 1,
+            },
+        ]
+    )
+
+    ship_resolution = await resolve_build_chain(
+        mongo_db, None, test_settings, SHIP_TYPE_ID, 1, frozenset({COMPONENT_TYPE_ID})
+    )
+    module_resolution = await resolve_build_chain(
+        mongo_db, None, test_settings, MODULE_TYPE_ID, 1, frozenset({COMPONENT_TYPE_ID})
+    )
+
+    combined = aggregate_build_steps([ship_resolution, module_resolution])
+
+    by_type_id = {step.type_id: step for step in combined}
+    assert set(by_type_id) == {SHIP_TYPE_ID, MODULE_TYPE_ID, COMPONENT_TYPE_ID}
+    # Ship needs 1 component run, module needs 2 -> 3 runs combined.
+    assert by_type_id[COMPONENT_TYPE_ID].runs == 3
+    assert by_type_id[COMPONENT_TYPE_ID].quantity_needed == 3
+    assert by_type_id[SHIP_TYPE_ID].runs == 1
+    assert by_type_id[MODULE_TYPE_ID].runs == 1

@@ -31,6 +31,33 @@
 </table>
 {% endmacro %}
 
+{% macro combined_steps_table(steps) %}
+<table class="mini-table">
+  <thead>
+    <tr>
+      <th>Item</th>
+      <th>Runs</th>
+      <th>Produces</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for step in steps %}
+    <tr>
+      <td>
+        <img class="mini-table-icon" src="{{ step.icon_url }}" alt=""
+          onerror="this.style.visibility='hidden'">
+        {{ step.name }}
+      </td>
+      <td>{{ step.runs }}</td>
+      <td>{{ step.quantity_needed }}</td>
+      <td>{% if step.flag_html %}{{ step.flag_html | safe }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
 {% macro steps_table(steps) %}
 <table class="mini-table">
   <tbody>
@@ -72,6 +99,13 @@
     {{ summary_stat(stats.total_profit, "Total profit") }}
     {{ summary_stat(stats.job_count, "Jobs") }}
   </div>
+
+  {% if combined_steps %}
+  <div class="section-box">
+    <h2>Total Build Steps</h2>
+    {{ combined_steps_table(combined_steps) }}
+  </div>
+  {% endif %}
 
   {% if combined_materials %}
   <div class="section-box">

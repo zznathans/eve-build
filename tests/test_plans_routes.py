@@ -975,6 +975,56 @@ async def test_plan_detail_shows_bulk_toggle_and_it_builds_the_material_in_every
 
 
 @respx.mock
+async def test_plan_detail_shows_combined_build_steps_table_above_bill_of_materials(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
+    await _seed_two_level_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 1}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    client.get(f"/plans/{plan_id}/add-job", params={"type_id": SHIP_TYPE_ID, "qty": 2})
+
+    response = client.get(f"/plans/{plan_id}")
+
+    assert response.status_code == 200
+    steps_pos = response.text.index("Total Build Steps")
+    materials_pos = response.text.index("Total Bill of Materials")
+    assert steps_pos < materials_pos  # steps table renders above the materials table
+    # Ship is a target in both jobs (1 + 2 = 3 runs combined) - no Buy toggle for it, since
+    # resolve_build_chain always expands a job's own target regardless of build_set.
+    assert "<td>3</td>" in response.text
+    ship_row_start = response.text.index("Test Ship", steps_pos)
+    ship_row_end = response.text.index("</tr>", ship_row_start)
+    assert "flag-buy-toggle" not in response.text[ship_row_start:ship_row_end]
+    assert "flag-toggle-group" not in response.text[ship_row_start:ship_row_end]
+
+    # Component isn't built anywhere yet, so it doesn't appear as a step at all.
+    assert "Test Component" not in response.text[steps_pos:materials_pos]
+
+    client.get(
+        f"/plans/{plan_id}/materials/{COMPONENT_TYPE_ID}/build-set",
+        params={"build": "true"},
+        follow_redirects=False,
+    )
+
+    response2 = client.get(f"/plans/{plan_id}")
+    assert response2.status_code == 200
+    steps_pos2 = response2.text.index("Total Build Steps")
+    materials_pos2 = response2.text.index("Total Bill of Materials")
+    steps_section = response2.text[steps_pos2:materials_pos2]
+    assert "Test Component" in steps_section
+    # Now built everywhere - shown as the active (non-clickable) Build pill.
+    assert '<span class="flag flag-build">Build</span>' in steps_section
+
+
+@respx.mock
 async def test_set_material_build_flag_for_all_jobs_requires_login(client: TestClient) -> None:
     response = client.get("/plans/some-plan/materials/500/build-set", params={"build": "true"})
 
