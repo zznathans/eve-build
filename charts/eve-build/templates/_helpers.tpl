@@ -75,6 +75,43 @@ is supplied. Renders a single EnvVar entry at zero indentation.
 {{- end -}}
 
 {{/*
+Checksum of every Secret eve-build.env sources via secretKeyRef (Mongo connection/external/
+existing, session, market-prices, rabbitmq existingSecret), for use as a `checksum/secrets` pod
+annotation on every workload that calls eve-build.env. Kubernetes does not restart a Pod when a
+Secret it reads via secretKeyRef changes underneath it - the container keeps whatever value it
+resolved at start, indefinitely - so without this, a rotated credential (e.g. the Mongo password
+the mongodb-kubernetes-operator rotates when mongodb.yaml's Secret changes) leaves already-running
+Pods authenticating with stale credentials with no restart to force them to pick up the new ones.
+Changing this annotation forces a rollout whenever any of these Secrets' data changes.
+Relies on `lookup`, so - like every other `lookup` use in this chart (see mongodb.yaml) - it only
+sees real Secret content during an actual install/upgrade against a live cluster (ArgoCD's synced
+apply included); it renders a constant, empty-content checksum under `helm template`/`lint`.
+*/}}
+{{- define "eve-build.secretsChecksum" -}}
+{{- $ns := .Release.Namespace -}}
+{{- $secrets := list -}}
+{{- if .Values.mongodb.enabled -}}
+{{- $secrets = append $secrets (lookup "v1" "Secret" $ns (printf "%s-mongodb-connection" .Release.Name)) -}}
+{{- else if .Values.mongodb.externalSecret.enabled -}}
+{{- $secrets = append $secrets (lookup "v1" "Secret" $ns (printf "%s-mongodb-external" .Release.Name)) -}}
+{{- else if .Values.mongodb.existingSecret -}}
+{{- $secrets = append $secrets (lookup "v1" "Secret" $ns .Values.mongodb.existingSecret) -}}
+{{- end -}}
+{{- $sessionSecretName := .Values.eveBuild.session.existingSecret | default (printf "%s-session" .Release.Name) -}}
+{{- $secrets = append $secrets (lookup "v1" "Secret" $ns $sessionSecretName) -}}
+{{- $marketPricesSecretName := .Values.eveBuild.marketPrices.existingSecret | default (printf "%s-market-prices" .Release.Name) -}}
+{{- $secrets = append $secrets (lookup "v1" "Secret" $ns $marketPricesSecretName) -}}
+{{- if and .Values.rabbitmq.enabled .Values.rabbitmq.existingSecret -}}
+{{- $secrets = append $secrets (lookup "v1" "Secret" $ns .Values.rabbitmq.existingSecret) -}}
+{{- end -}}
+{{- $data := "" -}}
+{{- range $secrets -}}
+{{- $data = printf "%s%s" $data (.data | toYaml) -}}
+{{- end -}}
+{{- $data | sha256sum -}}
+{{- end -}}
+
+{{/*
 Shared container env vars for every eve-build workload (the app Deployment, plus the
 market-prices dispatch CronJob and fetch/write worker Deployments, and the tracked-info
 dispatch CronJob and refresh-worker Deployment) - they all need the same Mongo/Redis/RabbitMQ/

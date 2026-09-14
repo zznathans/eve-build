@@ -51,3 +51,10 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].command
           value: ["python", "-m", "app.scripts.market_prices_write_worker"]
+
+  - it: sets a checksum/secrets pod annotation so credential rotations trigger a rollout
+    set:
+      rabbitmq.enabled: true
+    asserts:
+      - exists:
+          path: spec.template.metadata.annotations["checksum/secrets"]
