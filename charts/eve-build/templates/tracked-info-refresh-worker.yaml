@@ -18,6 +18,8 @@ spec:
     metadata:
       labels:
         app: {{ .Release.Name }}-tracked-info-refresh-worker
+      annotations:
+        checksum/secrets: {{ include "eve-build.secretsChecksum" . | quote }}
     spec:
       serviceAccountName: {{ .Release.Name }}-serviceaccount
       containers:

@@ -284,10 +284,12 @@ tests:
           path: spec.template.metadata.labels.app
           value: RELEASE-NAME
 
-  - it: omits pod annotations block when unset
+  - it: always sets a checksum/secrets pod annotation, even with no podAnnotations configured
     asserts:
-      - notExists:
+      - exists:
           path: spec.template.metadata.annotations
+      - exists:
+          path: spec.template.metadata.annotations["checksum/secrets"]
 
   - it: renders nodeSelector, tolerations, and affinity
     set:
