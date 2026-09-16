@@ -19,5 +19,4 @@ templates.env.filters["item_icon_url"] = web.item_icon_url
 templates.env.filters["icon_url"] = web.icon_url
 templates.env.filters["security_status_color"] = web.security_status_color
 templates.env.filters["gauge_color"] = web.gauge_color
-templates.env.globals["static_url"] = web.static_url
 templates.env.globals["FAVICON_URL"] = web.FAVICON_URL

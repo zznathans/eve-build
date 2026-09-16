@@ -6,7 +6,6 @@
     {% set nav_items = [
       {"href": "/blueprints", "label": "Blueprints"},
       {"href": "/pi", "label": "PI"},
-      {"href": "/planetary", "label": "PI Schematics"},
       {"href": "/plans", "label": "Plans"},
     ] %}
     {% for item in nav_items | sort(attribute="label") %}
@@ -26,7 +25,6 @@
   <div class="nav-links">
     {% set nav_items = [
       {"href": "/blueprints/catalog", "label": "Blueprint Catalog"},
-      {"href": "/planetary", "label": "PI Schematics"},
     ] %}
     {% for item in nav_items | sort(attribute="label") %}
     <a href="{{ item.href }}">{{ item.label }}</a>
