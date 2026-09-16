@@ -135,3 +135,61 @@ tests:
               db: admin
             - name: listCollectionsAnyDatabase
               db: admin
+
+  - it: adds a readWrite user per additionalUsers entry, on its own database
+    set:
+      mongodb.enabled: true
+      mongodb.passwordSecretName: eve-build-mongodb-password
+      mongodb.additionalUsers:
+        - name: eve-build-pr
+          database: eve-build-pr
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.users[1].name
+          value: eve-build-pr
+      - equal:
+          path: spec.users[1].roles[0]
+          value:
+            name: readWrite
+            db: eve-build-pr
+      - equal:
+          path: spec.users[1].connectionStringSecretName
+          value: RELEASE-NAME-mongodb-eve-build-pr-connection
+
+  - it: generates a password Secret per additionalUsers entry when passwordSecretName isn't set
+    set:
+      mongodb.enabled: true
+      mongodb.passwordSecretName: eve-build-mongodb-password
+      mongodb.additionalUsers:
+        - name: eve-build-pr
+          database: eve-build-pr
+    asserts:
+      - hasDocuments:
+          count: 2
+      - documentIndex: 0
+        isKind:
+          of: Secret
+      - documentIndex: 0
+        equal:
+          path: metadata.name
+          value: RELEASE-NAME-mongodb-eve-build-pr-password
+      - documentIndex: 1
+        equal:
+          path: spec.users[1].passwordSecretRef.name
+          value: RELEASE-NAME-mongodb-eve-build-pr-password
+
+  - it: does not generate a password Secret for an additionalUsers entry with passwordSecretName set
+    set:
+      mongodb.enabled: true
+      mongodb.passwordSecretName: eve-build-mongodb-password
+      mongodb.additionalUsers:
+        - name: eve-build-pr
+          database: eve-build-pr
+          passwordSecretName: eve-build-pr-mongodb-password
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.users[1].passwordSecretRef.name
+          value: eve-build-pr-mongodb-password

@@ -356,6 +356,20 @@ mongodb:
   # across upgrades (reuses the existing Secret's password if there is one).
   passwordSecretName: ""
 
+  # -- Extra readWrite users to create on this same MongoDBCommunity replica set, each
+  # scoped to its own database - e.g. so another release (a PR preview environment) can
+  # share this replica set instead of running its own. Ignored when `enabled` is false.
+  # Each item's connection string is written to its own Secret,
+  # "<release-name>-mongodb-<name>-connection" (same shape as the primary user's
+  # "<release-name>-mongodb-connection") - point another release's `mongodb.existingSecret`
+  # at it, via an ExternalSecret if that release is in a different namespace.
+  additionalUsers: []
+  # - name: eve-build-pr # -- Mongo username to create.
+  #   database: eve-build-pr # -- Database this user gets a readWrite role on.
+  #   passwordSecretName: "" # -- Existing Secret with a `password` key, or empty to
+  #     # have the chart generate and manage one itself, in a Secret named
+  #     # "<release-name>-mongodb-<name>-password".
+
   # -- Resource requests and limits for the mongod container.
   resources:
     requests:
