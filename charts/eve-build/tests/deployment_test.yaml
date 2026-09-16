@@ -422,6 +422,28 @@ tests:
             name: ESI_USER_AGENT
             value: my-app
 
+  - it: renders access control whitelist settings
+    set:
+      eveBuild.accessControl.characterIds: "12345,67890"
+      eveBuild.accessControl.corporationIds: "111"
+      eveBuild.accessControl.allianceIds: "222"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ACCESS_WHITELIST_CHARACTER_IDS
+            value: "12345,67890"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ACCESS_WHITELIST_CORPORATION_IDS
+            value: "111"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ACCESS_WHITELIST_ALLIANCE_IDS
+            value: "222"
+
   - it: renders sdeDataDir and runMigrationsOnStartup
     set:
       eveBuild.sdeDataDir: /data/sde

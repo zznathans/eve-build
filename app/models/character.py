@@ -23,3 +23,10 @@ class CharacterDocument(BaseModel):
     corp_access_token: str | None = None
     corp_refresh_token: str | None = None
     corp_access_token_expires_at: datetime | None = None
+
+    # The character's actual corporation/alliance membership, refreshed on every login -
+    # independent of the "connect corporation data" opt-in above. Used for whitelist
+    # enforcement (app/services/access_control.py) so per-request checks don't need an
+    # ESI call.
+    home_corporation_id: int | None = None
+    home_alliance_id: int | None = None

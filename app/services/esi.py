@@ -214,16 +214,27 @@ async def get_character_assets(
     ]
 
 
-async def get_character_public_info(settings: Settings, character_id: int) -> int:
-    """Returns the character's corporation_id. Unauthenticated - ESI's
-    /characters/{character_id}/ endpoint is public."""
+@dataclass(frozen=True)
+class CharacterPublicInfo:
+    corporation_id: int
+    alliance_id: int | None
+
+
+async def get_character_public_info(settings: Settings, character_id: int) -> CharacterPublicInfo:
+    """Returns the character's corporation_id/alliance_id. Unauthenticated - ESI's
+    /characters/{character_id}/ endpoint is public. alliance_id is omitted by ESI for
+    characters not in an alliance."""
     url = f"{settings.esi_base_url}/characters/{character_id}/"
     headers = _headers(settings, None)
 
     async with httpx.AsyncClient() as client:
         response = await _timed_get(client, url, endpoint="characters/public_info", headers=headers)
 
-    return int(response.json()["corporation_id"])
+    payload = response.json()
+    return CharacterPublicInfo(
+        corporation_id=int(payload["corporation_id"]),
+        alliance_id=int(payload["alliance_id"]) if "alliance_id" in payload else None,
+    )
 
 
 async def get_corporation_name(settings: Settings, corporation_id: int) -> str | None:

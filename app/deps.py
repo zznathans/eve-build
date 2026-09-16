@@ -4,6 +4,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.core.config import Settings, get_settings
 from app.db.mongo import get_database
 from app.models.character import CharacterDocument
+from app.services import access_control
 from app.services.character_tokens import ensure_fresh_tokens
 
 
@@ -32,6 +33,15 @@ async def get_current_character_optional(
         return None
 
     document = CharacterDocument.model_validate(raw_doc)
+
+    if not access_control.is_character_allowed(
+        settings,
+        character_id=document.character_id,
+        corporation_id=document.home_corporation_id or 0,
+        alliance_id=document.home_alliance_id,
+    ):
+        request.session.pop("character_id", None)
+        return None
 
     refreshed = await ensure_fresh_tokens(db, settings, document)
     if refreshed is None:

@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     eve_sso_issuer: str = "https://login.eveonline.com"
     eve_sso_audience: str = "EVE Online"
 
+    # Comma-separated EVE IDs. Empty (all three) means no restriction - anyone who
+    # completes SSO can use the app. See app/services/access_control.py.
+    access_whitelist_character_ids: str = ""
+    access_whitelist_corporation_ids: str = ""
+    access_whitelist_alliance_ids: str = ""
+
     esi_base_url: str = "https://esi.evetech.net"
     esi_compatibility_date: str = "2026-08-18"
     esi_user_agent: str = "eve-build"

@@ -101,6 +101,16 @@ eveBuild:
     # -- Expected `aud` claim on SSO tokens.
     audience: "EVE Online"
 
+  accessControl:
+    # -- Comma-separated EVE character IDs allowed to use the app. Empty (with
+    # corporationIds/allianceIds also empty) means no restriction - anyone who
+    # completes SSO can log in.
+    characterIds: ""
+    # -- Comma-separated EVE corporation IDs whose members are allowed to use the app.
+    corporationIds: ""
+    # -- Comma-separated EVE alliance IDs whose members are allowed to use the app.
+    allianceIds: ""
+
   esi:
     # -- Base URL for the EVE Swagger Interface.
     baseUrl: "https://esi.evetech.net"

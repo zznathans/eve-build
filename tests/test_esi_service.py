@@ -240,3 +240,29 @@ async def test_get_character_colony_detail_backs_off_when_error_limit_low(
     await esi.get_character_colony_detail(settings, "token", 123, 40023001)
 
     assert sleeps == [20.0]
+
+
+@respx.mock
+async def test_get_character_public_info_includes_alliance_id_when_present() -> None:
+    settings = Settings()
+    respx.get(f"{settings.esi_base_url}/characters/123/").mock(
+        return_value=Response(200, json={"corporation_id": 98000001, "alliance_id": 99000001})
+    )
+
+    info = await esi.get_character_public_info(settings, 123)
+
+    assert info.corporation_id == 98000001
+    assert info.alliance_id == 99000001
+
+
+@respx.mock
+async def test_get_character_public_info_alliance_id_none_when_absent() -> None:
+    settings = Settings()
+    respx.get(f"{settings.esi_base_url}/characters/123/").mock(
+        return_value=Response(200, json={"corporation_id": 98000001})
+    )
+
+    info = await esi.get_character_public_info(settings, 123)
+
+    assert info.corporation_id == 98000001
+    assert info.alliance_id is None

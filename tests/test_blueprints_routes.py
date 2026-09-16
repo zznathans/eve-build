@@ -45,6 +45,9 @@ def _log_in(
         )
     )
     respx.get(test_settings.eve_sso_jwks_url).mock(return_value=Response(200, json={"keys": [jwk]}))
+    respx.get(f"{test_settings.esi_base_url}/characters/{CHARACTER_ID}/").mock(
+        return_value=Response(200, json={"corporation_id": 98000001})
+    )
 
     client.get(
         "/auth/callback",
