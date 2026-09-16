@@ -149,9 +149,9 @@ async def test_get_merged_assets_includes_corp_assets_when_connected() -> None:
         corp_access_token_expires_at=datetime.now(UTC),
     )
 
-    respx.get(
-        f"{settings.esi_base_url}/characters/{CHARACTER_ID}/assets", params={"page": 1}
-    ).mock(return_value=Response(200, headers={"X-Pages": "1"}, json=[]))
+    respx.get(f"{settings.esi_base_url}/characters/{CHARACTER_ID}/assets", params={"page": 1}).mock(
+        return_value=Response(200, headers={"X-Pages": "1"}, json=[])
+    )
     respx.get(
         f"{settings.esi_base_url}/corporations/{CORPORATION_ID}/assets", params={"page": 1}
     ).mock(

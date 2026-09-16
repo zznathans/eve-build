@@ -331,9 +331,7 @@ def _job_doc_from_import(job: dict[str, object]) -> dict[str, object]:
     return doc
 
 
-async def import_plan(
-    db: AsyncIOMotorDatabase, character_id: int, data: dict[str, object]
-) -> str:
+async def import_plan(db: AsyncIOMotorDatabase, character_id: int, data: dict[str, object]) -> str:
     """Creates a new plan owned by character_id from a previously-exported representation
     (see export_plan). Raises ValueError if the data is malformed (the route turns that into
     a 400)."""
