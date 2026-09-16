@@ -8,7 +8,7 @@ from app.core.config import Settings, get_settings
 from app.db.mongo import get_database
 from app.deps import get_current_character
 from app.models.character import CharacterDocument
-from app.services import esi, eve_sso
+from app.services import access_control, esi, eve_sso
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -57,6 +57,15 @@ async def _complete_login(
     token = await eve_sso.exchange_code_for_token(settings, code=code, code_verifier=code_verifier)
     claims = await eve_sso.validate_access_token(settings, token.access_token)
 
+    public_info = await esi.get_character_public_info(settings, claims.character_id)
+    if not access_control.is_character_allowed(
+        settings,
+        character_id=claims.character_id,
+        corporation_id=public_info.corporation_id,
+        alliance_id=public_info.alliance_id,
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This character is not permitted to log in")
+
     now = datetime.now(UTC).replace(tzinfo=None)
     document = CharacterDocument(
         character_id=claims.character_id,
@@ -68,6 +77,8 @@ async def _complete_login(
         access_token_expires_at=now + timedelta(seconds=token.expires_in),
         created_at=now,
         updated_at=now,
+        home_corporation_id=public_info.corporation_id,
+        home_alliance_id=public_info.alliance_id,
     )
     await db.characters.update_one(
         {"_id": claims.character_id},
@@ -101,14 +112,14 @@ async def _complete_corp_connection(
             "Corporation data must be connected as the same character you're logged in as",
         )
 
-    corporation_id = await esi.get_character_public_info(settings, claims.character_id)
+    public_info = await esi.get_character_public_info(settings, claims.character_id)
 
     now = datetime.now(UTC).replace(tzinfo=None)
     await db.characters.update_one(
         {"_id": claims.character_id},
         {
             "$set": {
-                "corporation_id": corporation_id,
+                "corporation_id": public_info.corporation_id,
                 "corp_scopes": claims.scopes,
                 "corp_access_token": token.access_token,
                 "corp_refresh_token": token.refresh_token,

@@ -86,11 +86,13 @@
       </form>
       <div class="meta">saved {{ created_at }}</div>
     </div>
-    <a class="btn btn-secondary" href="/plans/{{ plan_id }}/export">Export</a>
-    <a class="btn btn-danger" href="/plans/{{ plan_id }}/delete"
-      onclick="return confirm('Delete this plan? This cannot be undone.')">
-      Delete Plan
-    </a>
+    <div class="header-actions">
+      <a class="btn btn-secondary" href="/plans/{{ plan_id }}/export">Export</a>
+      <a class="btn btn-danger" href="/plans/{{ plan_id }}/delete"
+        onclick="return confirm('Delete this plan? This cannot be undone.')">
+        Delete Plan
+      </a>
+    </div>
   </div>
   <a class="btn btn-primary plan-header-action" href="/plans/{{ plan_id }}/add-from-blueprints">Add from Blueprints</a>
 

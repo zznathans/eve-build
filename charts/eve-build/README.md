@@ -70,6 +70,9 @@ table.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
+| eveBuild.accessControl.allianceIds | string | `""` | Comma-separated EVE alliance IDs whose members are allowed to use the app. |
+| eveBuild.accessControl.characterIds | string | `""` | Comma-separated EVE character IDs allowed to use the app. Empty (with corporationIds/allianceIds also empty) means no restriction - anyone who completes SSO can log in. |
+| eveBuild.accessControl.corporationIds | string | `""` | Comma-separated EVE corporation IDs whose members are allowed to use the app. |
 | eveBuild.affinity | object | `{}` | Affinity rules for the pod. |
 | eveBuild.autoscaling.behavior | object | `{}` | Raw `behavior` block (scale-up/scale-down policies, stabilization windows) passed through as-is - see the HorizontalPodAutoscaler API docs. Leave empty for Kubernetes' own defaults. |
 | eveBuild.autoscaling.enabled | bool | `false` | Deploy a HorizontalPodAutoscaler for the app Deployment. Requires the metrics-server (or equivalent resource-metrics API) already installed in the cluster - this chart only creates the HPA, not a metrics source for it to read from. |

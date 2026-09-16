@@ -47,6 +47,9 @@ def test_callback_happy_path(
         )
     )
     respx.get(test_settings.eve_sso_jwks_url).mock(return_value=Response(200, json={"keys": [jwk]}))
+    respx.get(f"{test_settings.esi_base_url}/characters/555/").mock(
+        return_value=Response(200, json={"corporation_id": 98000001})
+    )
 
     callback_response = client.get(
         "/auth/callback",
@@ -113,6 +116,9 @@ def test_logout_clears_session(
         )
     )
     respx.get(test_settings.eve_sso_jwks_url).mock(return_value=Response(200, json={"keys": [jwk]}))
+    respx.get(f"{test_settings.esi_base_url}/characters/1/").mock(
+        return_value=Response(200, json={"corporation_id": 98000001})
+    )
     client.get(
         "/auth/callback",
         params={"code": "auth-code", "state": state},
@@ -121,5 +127,122 @@ def test_logout_clears_session(
     assert client.get("/auth/me").status_code == 200
 
     client.get("/auth/logout", follow_redirects=False)
+
+    assert client.get("/auth/me").status_code == 401
+
+
+@respx.mock
+def test_callback_rejects_character_not_on_whitelist(
+    client: TestClient,
+    test_settings: Settings,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    test_settings.access_whitelist_character_ids = "999"
+
+    private_key, jwk = rsa_key_pair
+    login_response = client.get("/auth/login", follow_redirects=False)
+    state = parse_qs(urlparse(login_response.headers["location"]).query)["state"][0]
+
+    access_token = make_access_token(private_key, character_id=555, character_name="Alt Pilot")
+    respx.post(test_settings.eve_sso_token_url).mock(
+        return_value=Response(
+            200,
+            json={
+                "access_token": access_token,
+                "refresh_token": "refresh-token-value",
+                "expires_in": 1200,
+            },
+        )
+    )
+    respx.get(test_settings.eve_sso_jwks_url).mock(return_value=Response(200, json={"keys": [jwk]}))
+    respx.get(f"{test_settings.esi_base_url}/characters/555/").mock(
+        return_value=Response(200, json={"corporation_id": 98000001})
+    )
+
+    callback_response = client.get(
+        "/auth/callback",
+        params={"code": "auth-code", "state": state},
+        follow_redirects=False,
+    )
+
+    assert callback_response.status_code == 403
+    assert client.get("/auth/me").status_code == 401
+
+
+@respx.mock
+def test_callback_allows_character_via_corporation_whitelist(
+    client: TestClient,
+    test_settings: Settings,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    test_settings.access_whitelist_corporation_ids = "98000001"
+
+    private_key, jwk = rsa_key_pair
+    login_response = client.get("/auth/login", follow_redirects=False)
+    state = parse_qs(urlparse(login_response.headers["location"]).query)["state"][0]
+
+    access_token = make_access_token(private_key, character_id=555, character_name="Alt Pilot")
+    respx.post(test_settings.eve_sso_token_url).mock(
+        return_value=Response(
+            200,
+            json={
+                "access_token": access_token,
+                "refresh_token": "refresh-token-value",
+                "expires_in": 1200,
+            },
+        )
+    )
+    respx.get(test_settings.eve_sso_jwks_url).mock(return_value=Response(200, json={"keys": [jwk]}))
+    respx.get(f"{test_settings.esi_base_url}/characters/555/").mock(
+        return_value=Response(200, json={"corporation_id": 98000001})
+    )
+
+    callback_response = client.get(
+        "/auth/callback",
+        params={"code": "auth-code", "state": state},
+        follow_redirects=False,
+    )
+
+    assert callback_response.status_code in (302, 307)
+    assert client.get("/auth/me").status_code == 200
+
+
+@respx.mock
+def test_already_logged_in_character_is_logged_out_once_whitelist_excludes_them(
+    client: TestClient,
+    test_settings: Settings,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    private_key, jwk = rsa_key_pair
+    login_response = client.get("/auth/login", follow_redirects=False)
+    state = parse_qs(urlparse(login_response.headers["location"]).query)["state"][0]
+
+    access_token = make_access_token(private_key, character_id=555, character_name="Alt Pilot")
+    respx.post(test_settings.eve_sso_token_url).mock(
+        return_value=Response(
+            200,
+            json={
+                "access_token": access_token,
+                "refresh_token": "refresh-token-value",
+                "expires_in": 1200,
+            },
+        )
+    )
+    respx.get(test_settings.eve_sso_jwks_url).mock(return_value=Response(200, json={"keys": [jwk]}))
+    respx.get(f"{test_settings.esi_base_url}/characters/555/").mock(
+        return_value=Response(200, json={"corporation_id": 98000001})
+    )
+
+    client.get(
+        "/auth/callback",
+        params={"code": "auth-code", "state": state},
+        follow_redirects=False,
+    )
+    assert client.get("/auth/me").status_code == 200
+
+    # Whitelist tightened after login, to a corporation the cached home_corporation_id
+    # (98000001) isn't in - the session should be revoked on the very next request,
+    # without another SSO round trip or ESI call.
+    test_settings.access_whitelist_corporation_ids = "98000002"
 
     assert client.get("/auth/me").status_code == 401

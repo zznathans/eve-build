@@ -188,6 +188,12 @@ ESI/SSO configuration. Renders a list of EnvVar entries at zero indentation; cal
   value: {{ .Values.eveBuild.eveSso.issuer | quote }}
 - name: EVE_SSO_AUDIENCE
   value: {{ .Values.eveBuild.eveSso.audience | quote }}
+- name: ACCESS_WHITELIST_CHARACTER_IDS
+  value: {{ .Values.eveBuild.accessControl.characterIds | quote }}
+- name: ACCESS_WHITELIST_CORPORATION_IDS
+  value: {{ .Values.eveBuild.accessControl.corporationIds | quote }}
+- name: ACCESS_WHITELIST_ALLIANCE_IDS
+  value: {{ .Values.eveBuild.accessControl.allianceIds | quote }}
 - name: ESI_BASE_URL
   value: {{ .Values.eveBuild.esi.baseUrl | quote }}
 - name: ESI_COMPATIBILITY_DATE
