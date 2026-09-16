@@ -12,7 +12,7 @@
 }
 
 .plan-header-action { display: inline-block; margin-bottom: 1.5rem; }
-.header .btn-danger { margin-left: auto; }
+.header-actions { display: flex; gap: 0.75rem; align-items: center; margin-left: auto; }
 
 .rename-form { display: flex; align-items: center; gap: 0.5rem; }
 .rename-form input[type="text"] {
