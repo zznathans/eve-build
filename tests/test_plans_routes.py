@@ -1,5 +1,6 @@
 import respx
 from cryptography.hazmat.primitives.asymmetric import rsa
+from fastapi import status
 from fastapi.testclient import TestClient
 from httpx import Response
 from mongomock_motor import AsyncMongoMockClient
@@ -1656,3 +1657,141 @@ async def test_plan_detail_shows_a_delete_plan_button(
 
     assert response.status_code == 200
     assert f'href="/plans/{plan_id}/delete"' in response.text
+
+
+@respx.mock
+async def test_export_plan_requires_login(client: TestClient) -> None:
+    response = client.get("/plans/some-plan/export")
+
+    assert response.status_code == 401
+
+
+@respx.mock
+async def test_export_plan_404s_for_unknown_plan(
+    client: TestClient,
+    test_settings: Settings,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+
+    response = client.get("/plans/nonexistent/export")
+
+    assert response.status_code == 404
+
+
+@respx.mock
+async def test_export_plan_404s_for_a_different_owners_plan(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    await mongo_db.plans.insert_one(
+        {
+            "_id": "someone-elses-plan",
+            "character_id": CHARACTER_ID + 1,
+            "name": "",
+            "jobs": [],
+            "created_at": None,
+            "updated_at": None,
+        }
+    )
+    _log_in(client, test_settings, rsa_key_pair)
+
+    response = client.get("/plans/someone-elses-plan/export")
+
+    assert response.status_code == 404
+
+
+@respx.mock
+async def test_export_plan_returns_a_downloadable_json_file(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 3}, follow_redirects=False
+    )
+    plan_id = create_response.headers["location"].removeprefix("/plans/")
+    client.get(f"/plans/{plan_id}/rename", params={"name": "Fleet Doctrine"})
+
+    response = client.get(f"/plans/{plan_id}/export")
+
+    assert response.status_code == 200
+    assert response.headers["content-disposition"].startswith("attachment;")
+    data = response.json()
+    assert data["name"] == "Fleet Doctrine"
+    assert len(data["jobs"]) == 1
+    assert data["jobs"][0]["target_type_id"] == SHIP_TYPE_ID
+    assert data["jobs"][0]["target_quantity"] == 3
+    assert "job_id" not in data["jobs"][0]
+
+
+@respx.mock
+async def test_import_plan_requires_login(client: TestClient) -> None:
+    response = client.post("/plans/import", content=b"{}")
+
+    assert response.status_code == 401
+
+
+@respx.mock
+async def test_import_plan_creates_a_new_plan_owned_by_the_importer(
+    client: TestClient,
+    test_settings: Settings,
+    mongo_db: AsyncMongoMockClient,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+    _mock_assets(test_settings)
+    await _seed_buildable_ship(mongo_db)
+
+    create_response = client.get(
+        "/plans/create", params={"type_id": SHIP_TYPE_ID, "qty": 2}, follow_redirects=False
+    )
+    original_plan_id = create_response.headers["location"].removeprefix("/plans/")
+    client.get(f"/plans/{original_plan_id}/rename", params={"name": "Original"})
+    exported = client.get(f"/plans/{original_plan_id}/export").json()
+
+    response = client.post("/plans/import", json=exported, follow_redirects=False)
+
+    assert response.status_code == status.HTTP_303_SEE_OTHER
+    new_plan_id = response.headers["location"].removeprefix("/plans/")
+    assert new_plan_id != original_plan_id
+    new_doc = await mongo_db.plans.find_one({"_id": new_plan_id})
+    assert new_doc is not None
+    assert new_doc["character_id"] == CHARACTER_ID
+    assert new_doc["name"] == "Original"
+    assert len(new_doc["jobs"]) == 1
+    assert new_doc["jobs"][0]["target_type_id"] == SHIP_TYPE_ID
+    assert new_doc["jobs"][0]["job_id"] != exported["jobs"][0].get("job_id")
+
+
+@respx.mock
+async def test_import_plan_rejects_malformed_json(
+    client: TestClient,
+    test_settings: Settings,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+
+    response = client.post("/plans/import", content=b"not json")
+
+    assert response.status_code == 400
+
+
+@respx.mock
+async def test_import_plan_rejects_missing_jobs(
+    client: TestClient,
+    test_settings: Settings,
+    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
+) -> None:
+    _log_in(client, test_settings, rsa_key_pair)
+
+    response = client.post("/plans/import", json={"name": "Empty", "jobs": []})
+
+    assert response.status_code == 400

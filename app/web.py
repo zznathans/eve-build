@@ -1,26 +1,7 @@
-import hashlib
 from datetime import UTC, datetime
-from functools import lru_cache
 from html import escape
-from pathlib import Path
 
 from app.services.locations import LocationInfo
-
-_STATIC_DIR = Path(__file__).parent / "static"
-
-
-@lru_cache
-def _static_version(path: str) -> str:
-    """Short content hash for a /static/... path, appended as a `?v=` query param so a new
-    deploy's CSS isn't served stale from a layer that caches by URL alone (e.g. Cloudflare) -
-    the URL only changes when the file's content does."""
-    file_path = _STATIC_DIR / path.removeprefix("/static/")
-    digest = hashlib.sha256(file_path.read_bytes()).hexdigest()
-    return digest[:8]
-
-
-def static_url(path: str) -> str:
-    return f"{path}?v={_static_version(path)}"
 
 
 def gauge_color(percentage: float) -> str:

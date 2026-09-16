@@ -1,12 +1,33 @@
+from datetime import UTC, datetime
+
 import respx
 from fakeredis.aioredis import FakeRedis
 from httpx import Response
 from mongomock_motor import AsyncMongoMockClient
 
 from app.core.config import Settings
+from app.models.character import CharacterDocument
 from app.services import character_data
 
 CHARACTER_ID = 555
+CORPORATION_ID = 98000001
+
+
+def _character(**overrides: object) -> CharacterDocument:
+    now = datetime.now(UTC)
+    defaults: dict[str, object] = {
+        "character_id": CHARACTER_ID,
+        "character_name": "Alt Pilot",
+        "owner_hash": "hash",
+        "scopes": [],
+        "access_token": "token",
+        "refresh_token": "refresh-token",
+        "access_token_expires_at": now,
+        "created_at": now,
+        "updated_at": now,
+    }
+    defaults.update(overrides)
+    return CharacterDocument(**defaults)
 
 
 def _mongo_db() -> object:
@@ -113,3 +134,59 @@ async def test_get_character_colonies_skips_planet_that_fails_to_fetch() -> None
     )
 
     assert [colony.planet_id for colony in colonies] == [good_planet_id]
+
+
+@respx.mock
+async def test_get_merged_assets_includes_corp_assets_when_connected() -> None:
+    settings = Settings()
+    db = _mongo_db()
+    redis = FakeRedis()
+    character = _character(
+        corporation_id=CORPORATION_ID,
+        corp_scopes=["esi-assets.read_corporation_assets.v1"],
+        corp_access_token="corp-token",
+        corp_refresh_token="corp-refresh-token",
+        corp_access_token_expires_at=datetime.now(UTC),
+    )
+
+    respx.get(f"{settings.esi_base_url}/characters/{CHARACTER_ID}/assets", params={"page": 1}).mock(
+        return_value=Response(200, headers={"X-Pages": "1"}, json=[])
+    )
+    respx.get(
+        f"{settings.esi_base_url}/corporations/{CORPORATION_ID}/assets", params={"page": 1}
+    ).mock(
+        return_value=Response(
+            200,
+            headers={"X-Pages": "1"},
+            json=[
+                {
+                    "item_id": 1,
+                    "type_id": 34,
+                    "location_id": 60003760,
+                    "location_flag": "Hangar",
+                    "location_type": "station",
+                    "quantity": 250,
+                    "is_singleton": False,
+                }
+            ],
+        )
+    )
+
+    assets, corp_included = await character_data.get_merged_assets(db, redis, settings, character)
+
+    assert corp_included is True
+    assert [asset.quantity for asset in assets] == [250]
+
+
+@respx.mock
+async def test_get_merged_assets_excludes_corp_assets_when_not_connected() -> None:
+    settings = Settings()
+    db = _mongo_db()
+    redis = FakeRedis()
+    character = _character()
+    _asset_response_route(settings)
+
+    assets, corp_included = await character_data.get_merged_assets(db, redis, settings, character)
+
+    assert corp_included is False
+    assert len(assets) == 1

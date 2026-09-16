@@ -18,7 +18,6 @@ from app.db.redis import create_redis_client
 from app.db.startup_lock import startup_lock
 from app.migrations.runner import run_migrations
 from app.routes import (
-    assets,
     auth,
     blueprints,
     health,
@@ -139,7 +138,6 @@ if _settings.metrics_enabled:
 
 app.include_router(health.router)
 app.include_router(auth.router)
-app.include_router(assets.router)
 app.include_router(blueprints.router)
 app.include_router(jobs.router)
 app.include_router(market_prices.router)

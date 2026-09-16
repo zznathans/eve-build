@@ -276,3 +276,85 @@ async def get_plan(
 async def list_plans(db: AsyncIOMotorDatabase, character_id: int) -> list[dict[str, object]]:
     cursor = db.plans.find({"character_id": character_id}).sort("updated_at", -1)
     return await cursor.to_list(None)
+
+
+async def export_plan(
+    db: AsyncIOMotorDatabase, plan_id: str, character_id: int
+) -> dict[str, object] | None:
+    """Returns a portable representation of a plan (name + jobs, no Mongo-internal or
+    ownership fields) suitable for JSON download. Returns None if the plan doesn't exist or
+    isn't owned by this character (the route turns that into a 404)."""
+    doc = await get_plan(db, plan_id, character_id)
+    if doc is None:
+        return None
+    jobs = cast(list[dict[str, object]], doc["jobs"])
+    return {
+        "name": str(doc.get("name") or ""),
+        "jobs": [
+            {
+                "target_type_id": job["target_type_id"],
+                "target_quantity": job["target_quantity"],
+                "build_set": job["build_set"],
+                "blueprint_item_id": job.get("blueprint_item_id"),
+                "has_engineering_complex": job.get("has_engineering_complex", False),
+                "rig_tier": job.get("rig_tier"),
+                "security_band": job.get("security_band", "high"),
+            }
+            for job in jobs
+        ],
+    }
+
+
+def _job_doc_from_import(job: dict[str, object]) -> dict[str, object]:
+    """Rebuilds a job doc from untrusted imported data, regenerating job_id (so re-importing
+    the same export twice doesn't collide) and validating the fields _job_doc itself
+    produces. Raises ValueError if the shape is wrong."""
+    if not isinstance(job, dict):
+        raise ValueError("Each job must be an object")
+    try:
+        target_type_id = int(cast(int, job["target_type_id"]))
+        target_quantity = int(cast(int, job["target_quantity"]))
+        build_set = frozenset(int(t) for t in cast(list[int], job["build_set"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("Malformed job entry") from exc
+    blueprint_item_id = job.get("blueprint_item_id")
+    if blueprint_item_id is not None:
+        blueprint_item_id = int(cast(int, blueprint_item_id))
+    rig_tier = job.get("rig_tier")
+    security_band = job.get("security_band", "high")
+    if not isinstance(security_band, str):
+        raise ValueError("security_band must be a string")
+    doc = _job_doc(target_type_id, target_quantity, build_set, blueprint_item_id)
+    doc["has_engineering_complex"] = bool(job.get("has_engineering_complex", False))
+    doc["rig_tier"] = str(rig_tier) if rig_tier is not None else None
+    doc["security_band"] = security_band
+    return doc
+
+
+async def import_plan(db: AsyncIOMotorDatabase, character_id: int, data: dict[str, object]) -> str:
+    """Creates a new plan owned by character_id from a previously-exported representation
+    (see export_plan). Raises ValueError if the data is malformed (the route turns that into
+    a 400)."""
+    if not isinstance(data, dict):
+        raise ValueError("Plan data must be an object")
+    name = data.get("name", "")
+    if not isinstance(name, str):
+        raise ValueError("name must be a string")
+    raw_jobs = data.get("jobs")
+    if not isinstance(raw_jobs, list) or not raw_jobs:
+        raise ValueError("jobs must be a non-empty list")
+    jobs = [_job_doc_from_import(cast(dict[str, object], job)) for job in raw_jobs]
+
+    plan_id = str(uuid.uuid4())
+    now = datetime.now(UTC).replace(tzinfo=None)
+    await db.plans.insert_one(
+        {
+            "_id": plan_id,
+            "character_id": character_id,
+            "name": name[:100],
+            "jobs": jobs,
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+    return plan_id
