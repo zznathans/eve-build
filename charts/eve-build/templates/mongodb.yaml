@@ -36,6 +36,24 @@ data:
   password: {{ if $exporterExisting }}{{ index $exporterExisting.data "password" }}{{ else }}{{ randAlphaNum 32 | b64enc }}{{ end }}
 ---
 {{- end }}
+{{- range .Values.mongodb.additionalUsers }}
+{{- if not .passwordSecretName }}
+{{- $additionalSecretName := printf "%s-mongodb-%s-password" $.Release.Name .name }}
+{{- $additionalExisting := lookup "v1" "Secret" $.Release.Namespace $additionalSecretName }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $additionalSecretName }}
+  namespace: {{ $.Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+type: Opaque
+data:
+  # Same generate-once-then-reuse approach as the app's own password Secret above.
+  password: {{ if $additionalExisting }}{{ index $additionalExisting.data "password" }}{{ else }}{{ randAlphaNum 32 | b64enc }}{{ end }}
+---
+{{- end }}
+{{- end }}
 apiVersion: mongodbcommunity.mongodb.com/v1
 kind: MongoDBCommunity
 metadata:
@@ -92,6 +110,17 @@ spec:
           db: admin
       scramCredentialsSecretName: {{ .Release.Name }}-mongodb-exporter-scram
       connectionStringSecretName: {{ .Release.Name }}-mongodb-exporter-connection
+    {{- end }}
+    {{- range .Values.mongodb.additionalUsers }}
+    - name: {{ .name }}
+      db: admin
+      passwordSecretRef:
+        name: {{ .passwordSecretName | default (printf "%s-mongodb-%s-password" $.Release.Name .name) }}
+      roles:
+        - name: readWrite
+          db: {{ .database }}
+      scramCredentialsSecretName: {{ $.Release.Name }}-mongodb-{{ .name }}-scram
+      connectionStringSecretName: {{ $.Release.Name }}-mongodb-{{ .name }}-connection
     {{- end }}
   statefulSet:
     spec:
