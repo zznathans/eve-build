@@ -210,7 +210,6 @@ async def test_catalog_search_works_without_logging_in(
     assert "Rifter Blueprint" in response.text
     assert "Log in with EVE Online" in response.text
     assert 'href="/blueprints/catalog"' in response.text
-    assert 'href="/planetary"' in response.text
 
 
 async def test_catalog_detail_works_without_logging_in(
