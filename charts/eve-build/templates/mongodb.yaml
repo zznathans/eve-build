@@ -124,6 +124,8 @@ spec:
     {{- end }}
   statefulSet:
     spec:
+      persistentVolumeClaimRetentionPolicy:
+        {{- toYaml .Values.mongodb.pvcRetentionPolicy | nindent 8 }}
       template:
         spec:
           containers:

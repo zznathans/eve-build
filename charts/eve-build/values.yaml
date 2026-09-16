@@ -340,6 +340,13 @@ mongodb:
   version: "7.0.14"
   # -- Storage requested per member's PersistentVolumeClaim.
   storage: 10Gi
+  # -- Whether each member's PersistentVolumeClaim is kept or deleted when the
+  # StatefulSet is deleted or scaled down (persistentVolumeClaimRetentionPolicy).
+  # `Retain` keeps the PVC around (e.g. to avoid losing data on an accidental
+  # scale-down); `Delete` removes it. Requires Kubernetes 1.27+.
+  pvcRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
 
   # -- Database user the operator creates.
   username: eve-build
