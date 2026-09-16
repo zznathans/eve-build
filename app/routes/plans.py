@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import UTC, datetime
 from html import escape
@@ -5,7 +6,7 @@ from typing import cast
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from redis.asyncio import Redis
 
@@ -254,6 +255,24 @@ async def new_plan(
 ) -> RedirectResponse:
     plan_id = await plan.create_empty_plan(db, character.character_id)
     return RedirectResponse(f"/plans/{plan_id}/add-from-blueprints")
+
+
+@router.post("/import")
+async def import_plan(
+    request: Request,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> RedirectResponse:
+    body = await request.body()
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid JSON") from exc
+    try:
+        plan_id = await plan.import_plan(db, character.character_id, data)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return RedirectResponse(f"/plans/{plan_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/{plan_id}/add-job")
@@ -646,6 +665,24 @@ async def delete_plan(
     if not deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
     return RedirectResponse("/plans")
+
+
+@router.get("/{plan_id}/export")
+async def export_plan(
+    plan_id: str,
+    character: CharacterDocument = Depends(get_current_character),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> JSONResponse:
+    if not _PLAN_ID_RE.fullmatch(plan_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid plan id")
+    data = await plan.export_plan(db, plan_id, character.character_id)
+    if data is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plan not found")
+    filename = quote((str(data["name"]) or "plan") + ".json")
+    return JSONResponse(
+        content=data,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
 
 
 @router.get("/{plan_id}", response_class=HTMLResponse)

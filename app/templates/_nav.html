@@ -3,11 +3,15 @@
   <a class="brand" href="/">eve-build</a>
   <div class="nav-links">
     <a href="/">Home</a>
-    <a href="/blueprints">Blueprints</a>
-    <a href="/assets">Assets</a>
-    <a href="/pi">Planets</a>
-    <a href="/planetary">PI Schematics</a>
-    <a href="/plans">Plans</a>
+    {% set nav_items = [
+      {"href": "/blueprints", "label": "Blueprints"},
+      {"href": "/pi", "label": "PI"},
+      {"href": "/planetary", "label": "PI Schematics"},
+      {"href": "/plans", "label": "Plans"},
+    ] %}
+    {% for item in nav_items | sort(attribute="label") %}
+    <a href="{{ item.href }}">{{ item.label }}</a>
+    {% endfor %}
   </div>
   <div class="nav-user">
     <img class="nav-avatar" src="https://images.evetech.net/characters/{{ character.character_id }}/portrait?size=64" alt="{{ character.character_name }}">
@@ -20,8 +24,13 @@
 <nav class="navbar">
   <a class="brand" href="/">eve-build</a>
   <div class="nav-links">
-    <a href="/blueprints/catalog">Blueprint Catalog</a>
-    <a href="/planetary">PI Schematics</a>
+    {% set nav_items = [
+      {"href": "/blueprints/catalog", "label": "Blueprint Catalog"},
+      {"href": "/planetary", "label": "PI Schematics"},
+    ] %}
+    {% for item in nav_items | sort(attribute="label") %}
+    <a href="{{ item.href }}">{{ item.label }}</a>
+    {% endfor %}
   </div>
   <a class="btn btn-primary" href="/auth/login">Log in with EVE Online</a>
 </nav>

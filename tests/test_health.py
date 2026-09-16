@@ -52,34 +52,6 @@ async def test_dashboard_shows_summary_counts(
             ],
         )
     )
-    respx.get(
-        f"{test_settings.esi_base_url}/characters/{CHARACTER_ID}/assets", params={"page": 1}
-    ).mock(
-        return_value=Response(
-            200,
-            headers={"X-Pages": "1"},
-            json=[
-                {
-                    "item_id": 1,
-                    "type_id": 34,
-                    "location_id": 60003760,
-                    "location_flag": "Hangar",
-                    "location_type": "station",
-                    "quantity": 100,
-                    "is_singleton": False,
-                },
-                {
-                    "item_id": 2,
-                    "type_id": 35,
-                    "location_id": 60003760,
-                    "location_flag": "Hangar",
-                    "location_type": "station",
-                    "quantity": 50,
-                    "is_singleton": False,
-                },
-            ],
-        )
-    )
     respx.get(f"{test_settings.esi_base_url}/universe/stations/60003760").mock(
         return_value=Response(200, json={"name": "Jita IV - Moon 4"})
     )
@@ -127,7 +99,6 @@ async def test_dashboard_shows_summary_counts(
 
     assert response.status_code == 200
     assert ">1<" in response.text  # 1 blueprint
-    assert ">2<" in response.text  # 2 asset stacks
     assert "Manufacturing" in response.text
     assert "mini-gauge" in response.text
     assert "Rifter Blueprint" in response.text

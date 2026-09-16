@@ -62,7 +62,6 @@ async def read_root(
         )
 
     blueprints, _ = await character_data.get_merged_blueprints(db, redis, settings, character)
-    assets, _ = await character_data.get_merged_assets(db, redis, settings, character)
     jobs, _ = await character_data.get_merged_industry_jobs(db, redis, settings, character)
     active_jobs = [job for job in jobs if job.status == "active"]
     blueprint_type_docs = await sde.type_docs(
@@ -79,7 +78,6 @@ async def read_root(
             "character": character,
             "extra_stylesheets": _DASHBOARD_STYLE,
             "blueprint_count": len(blueprints),
-            "asset_count": len(assets),
             "active_job_count": len(active_jobs),
             "job_rows": [
                 _job_row(job, blueprint_type_docs, job_location_info) for job in active_jobs

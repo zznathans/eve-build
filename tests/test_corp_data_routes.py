@@ -269,50 +269,6 @@ def test_settings_treats_401_as_no_permission_rather_than_crashing(
 
 
 @respx.mock
-async def test_assets_list_merges_corp_assets(
-    client: TestClient,
-    test_settings: Settings,
-    mongo_db: AsyncMongoMockClient,
-    rsa_key_pair: tuple[rsa.RSAPrivateKey, dict[str, object]],
-) -> None:
-    _log_in(client, test_settings, rsa_key_pair)
-    _connect_corp(client, test_settings, rsa_key_pair)
-
-    await mongo_db.sde_types.insert_one(
-        {"_id": TRITANIUM_TYPE_ID, "name": "Tritanium", "group_id": 18, "published": True}
-    )
-
-    respx.get(
-        f"{test_settings.esi_base_url}/characters/{CHARACTER_ID}/assets", params={"page": 1}
-    ).mock(return_value=Response(200, headers={"X-Pages": "1"}, json=[]))
-    respx.get(
-        f"{test_settings.esi_base_url}/corporations/{CORPORATION_ID}/assets", params={"page": 1}
-    ).mock(
-        return_value=Response(
-            200,
-            headers={"X-Pages": "1"},
-            json=[
-                {
-                    "item_id": 1,
-                    "type_id": TRITANIUM_TYPE_ID,
-                    "location_id": 60003760,
-                    "location_flag": "Hangar",
-                    "location_type": "station",
-                    "quantity": 250,
-                    "is_singleton": False,
-                }
-            ],
-        )
-    )
-
-    response = client.get("/assets")
-
-    assert response.status_code == 200
-    assert "Includes corporation assets" in response.text
-    assert "250" in response.text
-
-
-@respx.mock
 def test_nav_shows_settings_link_next_to_logout(
     client: TestClient,
     test_settings: Settings,

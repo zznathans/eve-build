@@ -86,6 +86,7 @@
       </form>
       <div class="meta">saved {{ created_at }}</div>
     </div>
+    <a class="btn btn-secondary" href="/plans/{{ plan_id }}/export">Export</a>
     <a class="btn btn-danger" href="/plans/{{ plan_id }}/delete"
       onclick="return confirm('Delete this plan? This cannot be undone.')">
       Delete Plan

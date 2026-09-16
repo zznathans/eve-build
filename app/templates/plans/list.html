@@ -4,8 +4,29 @@
 <div class="page">
   <div class="header">
     <h1>Plans</h1>
-    <a class="btn btn-primary" href="/plans/new">+ New Plan</a>
+    <div style="margin-left: auto; display: flex; gap: 0.75rem; align-items: center;">
+      <label class="btn btn-secondary" for="import-plan-input">Import Plan</label>
+      <input type="file" id="import-plan-input" accept=".json,application/json" hidden>
+      <a class="btn btn-primary" href="/plans/new">+ New Plan</a>
+    </div>
   </div>
+  <script>
+    document.getElementById("import-plan-input").addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      const response = await fetch("/plans/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: text,
+      });
+      if (response.redirected) {
+        window.location.href = response.url;
+      } else {
+        alert("Could not import plan - the file may not be a valid plan export.");
+      }
+    });
+  </script>
   {% if not plans %}
   <p class="empty">No plans saved yet - create one and add jobs from your blueprints.</p>
   {% else %}
