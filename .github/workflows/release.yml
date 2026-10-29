@@ -62,7 +62,7 @@ jobs:
         with:
           version: "3.17.0"
 
-      - uses: cycjimmy/semantic-release-action@v6
+      - uses: cycjimmy/semantic-release-action@v8
         with:
           semantic_version: 24
           extra_plugins: |
